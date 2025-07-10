@@ -5,9 +5,11 @@
 #include "server.h"
 #include "request_parser.h"
 #include "proxy.h"
+#include "route_config.h"
+#include <unistd.h>
 
 #define PORT 7000
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 16384
 
 int main()
 {
@@ -21,11 +23,21 @@ int main()
     }
     printf("Server is listening on port %d\n", PORT);
 
+    // load routes
+
+    Route routes[MAX_ROUTES];
+    int route_count = load_routes("routes.conf", routes, MAX_ROUTES);
+    if (route_count <= 0)
+    {
+        perror("No routes loaded");
+        return 1;
+    }
     while (1)
     {
         client_id = accept_client(server_id);
         if (client_id < 0)
             continue;
+
         memset(buffer, 0, BUFFER_SIZE);
         int bytes_read = read(client_id, buffer, BUFFER_SIZE - 1);
         if (bytes_read <= 0)
@@ -61,25 +73,46 @@ int main()
         // printf("KEY %s\n",req.Headers[0].key);
         // printf("VALUE %s\n",req.Headers[0].value);
 
-        char *host_value = NULL;
-        for (int i = 0; i < req.header_count; i++)
-        {
-            if (strcasecmp(req.Headers[i].key, "Host") == 0)
-            {
-                host_value = req.Headers[i].value;
-                break;
-            }
-        }
+        // header based proxy
 
-        if (!host_value)
+        // char *host_value = NULL;
+        // for (int i = 0; i < req.header_count; i++)
+        // {
+        //     if (strcasecmp(req.Headers[i].key, "Host") == 0)
+        //     {
+        //         host_value = req.Headers[i].value;
+        //         break;
+        //     }
+        // }
+
+        // if (!host_value)
+        // {
+        //     fprintf(stderr, "No Host header found!\n");
+        //     close(client_id);
+        //     continue;
+        // }
+
+        // Find best backend based on path prefix
+        Route *backend = find_backend(routes, route_count, req.path);
+        if (!backend)
         {
-            fprintf(stderr, "No Host header found!\n");
+            const char *error_response =
+                "HTTP/1.1 502 Bad Gateway\r\n"
+                "Content-Type: text/plain\r\n"
+                "Content-Length: 12\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+                "Bad Gateway\n";
+
+            write(client_id, error_response, strlen(error_response));
             close(client_id);
             continue;
         }
 
-        int targetfd = connect_to_target(host_value, 80);
-        
+        printf("Routing to backend: %s:%d for prefix: %s\n", backend->host, backend->port, backend->prefix);
+
+        int targetfd = connect_to_target(backend->host, backend->port);
+
         if (targetfd < 0)
         {
             const char *error_response =
@@ -94,14 +127,32 @@ int main()
             close(client_id);
             continue;
         }
-        char request[1024];
-        snprintf(request, sizeof(request),
-                 "GET / HTTP/1.1\r\n"
-                 "Host: httpbin.org\r\n"
-                 "User-Agent: curl/7.81.0\r\n"
-                 "Accept: */*\r\n"
-                 "Connection: close\r\n"
-                 "\r\n");
+
+        // Build the corrected request
+        char request[4096];
+        int len = snprintf(request, sizeof(request),
+                           "%s %s HTTP/1.1\r\n"
+                           "Host: %s:%d\r\n"
+                           "Connection: close\r\n"  // Addedd connection close for time being to work properly untill implenting keep-alive
+                           "\r\n",
+                           req.methode,   // "GET"
+                           req.path,      // "/_next/static/css/app/page.css?v=1751791044675"
+                           backend->host, // "localhost"
+                           backend->port  // 3000
+        );
+
+        // Add all original headers except Host
+        for (int i = 0; i < req.header_count; i++)
+        {
+            if (strcasecmp(req.Headers[i].key, "Host") != 0)
+            {
+                len += snprintf(request + len, sizeof(request) - len,
+                                "%s: %s\r\n", req.Headers[i].key, req.Headers[i].value);
+            }
+        }
+
+        // Add terminating \r\n
+        len += snprintf(request + len, sizeof(request) - len, "\r\n");
 
         if (forward_request(targetfd, request, strlen(request)) < 0)
         {
@@ -121,6 +172,16 @@ int main()
             close(client_id);
             continue; // Skip to next client
         }
+
+        /*
+         * Note:
+         * This proxy only handles one request per TCP connection.
+         * It force-closes client_fd and target_fd after relay.
+         * It must add 'Connection: close' to backend request and client response
+         * to avoid keep-alive hangs.
+         * See docs/connection-issues.md for details.
+         */
+
         if (relay_response(targetfd, client_id) < 0)
         {
             fprintf(stderr, "Failed to relay response to client\n");
@@ -129,6 +190,22 @@ int main()
             continue;
         }
 
+        /**
+         * Close backend connection after successful response relay.
+         *
+         * This is critical because:
+         * - Prevents file descriptor leaks (each connect_to_target() opens a new fd)
+         * - Avoids backend connection state issues that can affect subsequent requests
+         * - Prevents local port exhaustion on the proxy side
+         * - Ensures proper cleanup of connection buffers and resources
+         *
+         * Without this, the proxy will work on first request but fail on subsequent
+         * requests due to resource leaks and stale connection state.
+         */
+
+        printf("DEBUG: closing backend and client socket\n");
+
+        close(targetfd);
         close(client_id);
     }
     close(server_id);
