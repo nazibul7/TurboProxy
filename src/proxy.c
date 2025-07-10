@@ -119,11 +119,14 @@ int forward_request(int targetFd, char *request_data, int length)
 
 int relay_response(int targetFd, int clientFd)
 {
-    char buffer[4096];
+    char buffer[16384];
     ssize_t bytes_read;
 
-    while ((bytes_read = recv(targetFd, buffer, sizeof(buffer), 0)) > 0)
+    printf("DEBUG: relay_response started\n");
+    while (1)
     {
+        bytes_read = recv(targetFd, buffer, sizeof(buffer), 0);
+        printf("DEBUG: relay_response read %zd bytes\n", bytes_read);   
         if (bytes_read < 0)
         {
             if (errno == EINTR)
@@ -131,6 +134,13 @@ int relay_response(int targetFd, int clientFd)
             else
                 return -1;
         }
+        else if (bytes_read == 0)
+        {
+            // Connection closed by target server
+            printf("Target server closed connection\n");
+            break;
+        }
+
         ssize_t total_sent = 0;
         while (total_sent < bytes_read)
         {
@@ -153,5 +163,6 @@ int relay_response(int targetFd, int clientFd)
             total_sent += bytes_sent;
         }
     }
+    printf("DEBUG: relay_response done\n");
     return 0;
 }
