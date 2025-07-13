@@ -6,9 +6,10 @@
 #include "request_parser.h"
 #include "proxy.h"
 #include "route_config.h"
+#include "rebuild_request.h"
 #include <unistd.h>
 
-#define PORT 7000
+#define PORT 8000
 #define BUFFER_SIZE 16384
 
 int main()
@@ -128,31 +129,57 @@ int main()
             continue;
         }
 
-        // Build the corrected request
-        char request[4096];
-        int len = snprintf(request, sizeof(request),
-                           "%s %s HTTP/1.1\r\n"
-                           "Host: %s:%d\r\n"
-                           "Connection: close\r\n"  // Addedd connection close for time being to work properly untill implenting keep-alive
-                           "\r\n",
-                           req.methode,   // "GET"
-                           req.path,      // "/_next/static/css/app/page.css?v=1751791044675"
-                           backend->host, // "localhost"
-                           backend->port  // 3000
-        );
+        // Get client IP
+        char client_ip[16];
 
-        // Add all original headers except Host
-        for (int i = 0; i < req.header_count; i++)
+        get_client_ip(client_id, client_ip, sizeof(client_ip));
+
+        // // Build the corrected request
+        // char request[4096];
+        // int len = snprintf(request, sizeof(request),
+        //                    "%s %s HTTP/1.1\r\n"
+        //                    "Host: %s:%d\r\n"
+        //                    "Connection: close\r\n" // Addedd connection close for time being to work properly untill implenting keep-alive
+        //                    "\r\n",
+        //                    req.methode,   // "GET"
+        //                    req.path,      // "/_next/static/css/app/page.css?v=1751791044675"
+        //                    backend->host, // "localhost"
+        //                    backend->port  // 3000
+        // );
+
+        // // Add all original headers except Host
+        // for (int i = 0; i < req.header_count; i++)
+        // {
+        //     if (strcasecmp(req.Headers[i].key, "Host") != 0)
+        //     {
+        //         len += snprintf(request + len, sizeof(request) - len,
+        //                         "%s: %s\r\n", req.Headers[i].key, req.Headers[i].value);
+        //     }
+        // }
+
+        // // Add terminating \r\n
+        // len += snprintf(request + len, sizeof(request) - len, "\r\n");
+
+        // Buffer to build correct request
+        char request[MAX_REQUEST_SIZE];
+
+        int build_request = rebuild_request(&req, request, client_ip, sizeof(request));
+
+        if (build_request < 0)
         {
-            if (strcasecmp(req.Headers[i].key, "Host") != 0)
-            {
-                len += snprintf(request + len, sizeof(request) - len,
-                                "%s: %s\r\n", req.Headers[i].key, req.Headers[i].value);
-            }
-        }
+            const char *error_response =
+                "HTTP/1.1 500 Internal Server Error\r\n"
+                "Content-Type: text/plain\r\n"
+                "Content-Length: 21\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+                "Internal Server Error";
 
-        // Add terminating \r\n
-        len += snprintf(request + len, sizeof(request) - len, "\r\n");
+            write(client_id, error_response, strlen(error_response));
+            close(targetfd);
+            close(client_id);
+            continue;
+        }
 
         if (forward_request(targetfd, request, strlen(request)) < 0)
         {
