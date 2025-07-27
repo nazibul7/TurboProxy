@@ -14,6 +14,9 @@
 
 int main()
 {
+    // Ignore SIGPIPE globally so the server doesn't crash on client disconnects
+    signal(SIGPIPE, SIG_IGN);
+
     int server_id, client_id;
     char buffer[BUFFER_SIZE];
     server_id = setup_server(PORT);
