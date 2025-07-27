@@ -15,6 +15,7 @@ int connect_to_target(char *host, int port)
     {
         *colon = '\0'; // terminate string at ':'
     }
+    // gethostbyname → resolve backend hostname (example: "backend.local" → 10.0.0.5).
     struct hostent *server = gethostbyname(host);
     if (server == NULL)
     {
@@ -126,9 +127,18 @@ int relay_response(int targetFd, int clientFd)
     while (1)
     {
         bytes_read = recv(targetFd, buffer, sizeof(buffer), 0);
-        printf("DEBUG: relay_response read %zd bytes\n", bytes_read);   
+        printf("DEBUG: relay_response read %zd bytes\n", bytes_read);
+
+        // bytes_read < 0 (-1)	Error occurred during read	Check errno; retry or handle error
         if (bytes_read < 0)
         {
+            /**
+             * EINTR (Interrupted system call)
+             * - It means a system call (like read(), recv(), or send()) was interrupted by a signal before it could complete.
+             * - The usual response is to retry the system call,
+             *   because this interruption is not a true error in reading or writing data,
+             *   just an interruption.
+             */
             if (errno == EINTR)
                 continue;
             else
@@ -149,7 +159,27 @@ int relay_response(int targetFd, int clientFd)
             {
                 if (errno == EINTR)
                     continue;
-                perror("send");
+                /**
+                 * EPIPE (Broken pipe)
+                 * Indicates that a write to a pipe or socket failed because the reading end has been closed.
+                 * In networking, this typically happens when you try to send() data to a socket for which the other side (client or server) has closed the connection.
+                 * By default, the OS sends a SIGPIPE signal to your process when this happens, which if unhandled causes your program to terminate.
+                 * If you ignore SIGPIPE (e.g., with signal(SIGPIPE, SIG_IGN)), the send() call returns -1 with errno set to EPIPE, allowing your program to handle the error gracefully without crashing.
+                 */
+
+                 /**
+                  * ECONNRESET (Connection reset by peer)
+                  * Means that the connection was forcibly closed by the remote side.
+                  * It usually occurs when the remote client TCP stack abruptly closes the connection or crashes.
+                  * When you try to read or write on such a socket, the kernel informs you by returning an error with errno set to ECONNRESET.
+                  * This is a common error in network programming and indicates that the peer closed the socket unexpectedly.
+                  */
+                if (errno == EPIPE || errno == ECONNRESET)
+                {
+                    fprintf(stderr, "Client disconnected (EPIPE or ECONNRESET)\n");
+                    return -1;
+                }
+                perror("send failed");
                 return -1;
             }
 
