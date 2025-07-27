@@ -13,32 +13,39 @@ int rebuild_request(HttpRequest *req, char *buffer, char *client_ip, size_t buff
     }
     size_t write_pos = 0;
     int written = 0;
-    
-    // snprint_f return The number of characters that would have been written if the buffer were big enough, excluding the terminating \0.
-    
+
+    /**
+     * snprint_f return The number of characters that would have been written if the buffer were big enough, excluding the terminating \0.
+     *
+     * Why perfect for HTTP Header-
+     * - Headers are always text strings
+     * - Need formatting: "Host: %s\r\n" becomes "Host: example.com\r\n"
+     * - Safe bounds checking prevents overflow
+     */
+
     // Write request line: METHOD PATH VERSION
     written = snprintf(buffer, buffer_size, "%s %s HTTP/1.1\r\n", req->methode, req->path);
     if (written < 0 || (size_t)written >= buffer_size - write_pos)
-    return -1;
-    
+        return -1;
+
     write_pos += written;
-    
+
     // Adding all headers
     for (int i = 0; i < req->header_count; i++)
     {
         written = snprintf(buffer + write_pos, buffer_size - write_pos, "%s: %s\r\n", req->Headers[i].key, req->Headers[i].value);
         if (written < 0 || (size_t)written >= buffer_size - write_pos)
-        return -1;
+            return -1;
         write_pos += written;
     }
-    
+
     // Add Connection header either close || keep-alive
     written = snprintf(buffer + write_pos, buffer_size - write_pos, "Connection: close\r\n");
     if (written < 0 || (size_t)written >= buffer_size - write_pos)
-    return -1;
+        return -1;
 
     write_pos += written;
-    
+
     // Add X-Forwarded-For header
     written = snprintf(buffer + write_pos, buffer_size - write_pos, "X-Forwarded-For: %s\r\n", client_ip);
     if (written < 0 || (size_t)written >= buffer_size - write_pos)
@@ -46,7 +53,17 @@ int rebuild_request(HttpRequest *req, char *buffer, char *client_ip, size_t buff
         return -1;
     }
     write_pos += written;
-    
+
+    // Add Content-Length header,if body is present
+    if (req->body && req->body_length)
+    {
+        written = snprintf(buffer + write_pos, buffer_size - write_pos,
+                           "Content-Length: %zu\r\n", req->body_length);
+        if (written < 0 || (size_t)written >= buffer_size - write_pos)
+            return -1;
+        write_pos += written;
+    }
+
     // End header
     written = snprintf(buffer + write_pos, buffer_size - write_pos, "\r\n");
     if (written < 0 || (size_t)written >= buffer_size - write_pos)
@@ -54,9 +71,30 @@ int rebuild_request(HttpRequest *req, char *buffer, char *client_ip, size_t buff
         return -1;
     }
     write_pos += written;
-    
+
     // Add body
-    
+    /*
+     * WHY memcpy() INSTEAD OF snprintf() FOR BODY:
+     *
+     * 1. BINARY DATA SAFETY:
+     *    - HTTP body can contain images, files, binary data
+     *    - These may have embedded null bytes (\0) that would truncate snprintf
+     *    - Example: JPEG file data contains many \0 bytes
+     *
+     * 2. FORMAT SPECIFIER PROTECTION:
+     *    - User input might contain "%s", "%d", etc.
+     *    - snprintf would try to interpret these as format specifiers
+     *    - Example: JSON like {"message": "Hello %s"} would cause undefined behavior
+     *
+     * 3. EXACT BYTE PRESERVATION:
+     *    - memcpy copies exactly req->body_length bytes
+     *    - No interpretation, no null-termination issues
+     *    - What goes in is exactly what comes out
+     *
+     * 4. PERFORMANCE:
+     *    - memcpy is optimized for bulk data copying
+     *    - No format parsing overhead like snprintf
+     */
     if (req->body && req->body_length)
     {
         if (write_pos + req->body_length >= buffer_size)
