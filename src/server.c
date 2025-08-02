@@ -9,7 +9,7 @@ int setup_server(int port)
 {
     int server_id;
     struct sockaddr_in address;
-    
+
     // creating a socket
 
     server_id = socket(AF_INET, SOCK_STREAM, 0);
@@ -46,7 +46,52 @@ int setup_server(int port)
     }
 
     // listening function
-    if (listen(server_id, 10) < 0)
+    /**
+     * listen(fd, backlog) and net.core.somaxconn:
+     *
+     * The `listen(fd, n)` system call sets up a socket to accept incoming connections.
+     * Its second parameter, `backlog`, defines the maximum number of connections
+     * that can be queued for acceptance.
+     * Tells kernel to allow up to n fully established connections waiting in Accept Queue or backlog queue.
+     *
+     * ─────────────────────────────────────────────────────────────────────
+     * However, the actual queue length is capped by the kernel's limit:
+     *   → /proc/sys/net/core/somaxconn
+     *
+     * 📌 Formula:
+     *   actual_backlog = min(backlog_passed_by_app, somaxconn_limit)
+     *
+     * 🔍 Example:
+     *   - If you set:
+     *       listen(fd, 4096);
+     *   - And somaxconn is:
+     *       128  → then actual backlog = 128
+     *       1024 → then actual backlog = 1024
+     *       8192 → then actual backlog = 4096 (since app asked only 4096)
+     *
+     * 🔧 Check or update `somaxconn`:
+     *   Temporary:
+     *       sysctl -w net.core.somaxconn=1024
+     *
+     *   Permanent (edit /etc/sysctl.conf):
+     *       net.core.somaxconn = 1024
+     *
+     *   Check current:
+     *       cat /proc/sys/net/core/somaxconn
+     *
+     * ⚠️ Note:
+     *   Setting a high backlog in `listen()` without increasing `somaxconn`
+     *   will NOT increase the actual queue length.
+     *
+     *
+     * If your system's somaxconn = 1024, but you call:
+     * listen(fd, 128);
+     * Then your server can only hold 128 connections in the accept queue.
+     * The kernel uses the minimum of the two.
+     * you must increase both
+     */
+
+    if (listen(server_id, 512) < 0)
     {
         perror("Listening failed");
         close(server_id);
