@@ -90,3 +90,6 @@ if (sent == -1) {
 
 > **SIGPIPE** is triggered when you write to a socket that the peer (client) has already closed.  
 > If unhandled, it crashes the server. You must ignore it and check `send()` return values to avoid terminating the process.
+
+## See more
+- Connection reset by peer: See [troubleshooting/connection-reset-by-peer-kernel-app-level.md](troubleshooting/connection-reset-by-peer-kernel-app-level.md)
