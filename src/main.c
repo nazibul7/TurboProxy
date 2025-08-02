@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <signal.h>
 #include "server.h"
 #include "request_parser.h"
 #include "proxy.h"
 #include "route_config.h"
 #include "rebuild_request.h"
-#include <unistd.h>
 
 #define PORT 8000
 #define BUFFER_SIZE 16384
@@ -43,11 +45,15 @@ int main()
             continue;
 
         memset(buffer, 0, BUFFER_SIZE);
+
+        // Initialize variables for this client iteration
+        int targetfd = -1;
+        bool req_parsed = false;
+
         int bytes_read = read(client_id, buffer, BUFFER_SIZE - 1);
         if (bytes_read <= 0)
         {
-            close(client_id);
-            continue;
+            goto cleanup;
         }
 
         printf("Received request:\n%s\n", buffer);
@@ -55,9 +61,9 @@ int main()
         if (parse_http_request(buffer, &req) != 0)
         {
             fprintf(stderr, "Failed to parse request\n");
-            close(client_id);
-            continue;
+            goto cleanup;
         }
+        req_parsed = true;
         // if (strcmp(req.methode, "GET") == 0 && strcmp(req.path, "/") == 0)
         // {
         //     const char *response = "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nHello, world!\n";
@@ -109,13 +115,12 @@ int main()
                 "Bad Gateway\n";
 
             write(client_id, error_response, strlen(error_response));
-            close(client_id);
-            continue;
+            goto cleanup;
         }
 
         printf("Routing to backend: %s:%d for prefix: %s\n", backend->host, backend->port, backend->prefix);
 
-        int targetfd = connect_to_target(backend->host, backend->port);
+        targetfd = connect_to_target(backend->host, backend->port);
 
         if (targetfd < 0)
         {
@@ -128,8 +133,7 @@ int main()
                 "Bad Gateway\n";
 
             write(client_id, error_response, strlen(error_response));
-            close(client_id);
-            continue;
+            goto cleanup;
         }
 
         // Get client IP
@@ -179,9 +183,7 @@ int main()
                 "Internal Server Error";
 
             write(client_id, error_response, strlen(error_response));
-            close(targetfd);
-            close(client_id);
-            continue;
+            goto cleanup;
         }
 
         if (forward_request(targetfd, request, strlen(request)) < 0)
@@ -196,11 +198,7 @@ int main()
                 "Bad Gateway\n";
 
             write(client_id, error_response, strlen(error_response));
-
-            // Close both sockets
-            close(targetfd);
-            close(client_id);
-            continue; // Skip to next client
+            goto cleanup;
         }
 
         /*
@@ -215,9 +213,7 @@ int main()
         if (relay_response(targetfd, client_id) < 0)
         {
             fprintf(stderr, "Failed to relay response to client\n");
-            close(targetfd);
-            close(client_id);
-            continue;
+            goto cleanup;
         }
 
         /**
@@ -235,8 +231,22 @@ int main()
 
         printf("DEBUG: closing backend and client socket\n");
 
-        close(targetfd);
-        close(client_id);
+    cleanup:
+        // Clean up resources for this client
+        if (req_parsed)
+        {
+            free_http_request(&req);
+        }
+        if (targetfd != -1)
+        {
+            close(targetfd);
+        }
+        if (client_id >= 0)
+        {
+            close(client_id);
+        }
+        // Continue to next client
+        continue;
     }
     close(server_id);
     return 0;
