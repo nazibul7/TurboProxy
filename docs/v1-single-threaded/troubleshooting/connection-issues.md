@@ -9,17 +9,17 @@
 - Proxy closed both client & backend sockets after one request.
 - Verified with:
     # 1️⃣ Single request works:
-    curl -v -H "Connection: keep-alive" http://localhost:7000/auth/login
+    curl -v -H "Connection: keep-alive" http://localhost:8000/auth/login
 
     # 2️⃣ Reuse TCP for second request — fails:
-    curl -v -H "Connection: keep-alive" http://localhost:7000/first-path http://localhost:7000/second-path
+    curl -v -H "Connection: keep-alive" http://localhost:8000/first-path http://localhost:7000/second-path
 
     * Re-using existing connection!
     * Recv failure: Connection reset by peer
 
 
     # 3️⃣ Check socket states:
-    netstat -tn | grep :7000
+    netstat -tn | grep :8000
 
 
 ## 📌 Situation
