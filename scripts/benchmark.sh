@@ -1,7 +1,7 @@
 #!/bin/bash
 
 URL="http://localhost:8000/"
-VERSION="v1-blocking"  # Change this for each version
+VERSION="v1-single-threaded"  # Change this for each version
 OUTDIR="benchmarks/$VERSION"
 mkdir -p "$OUTDIR"
 

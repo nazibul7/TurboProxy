@@ -62,3 +62,5 @@
 The v1 blocking proxy demonstrates stable but limited performance typical of single-threaded synchronous I/O systems. While reliability is high (up to **99.75%** success), both **throughput** and **latency** are constrained by the sequential nature of the architecture.
 
 This phase establishes a correct and clean foundation to build on. The lack of concurrency highlights the need for improvements in **Phase 2**, where we’ll add **Keep-Alive**, **epoll**, and a **thread pool** for scalable performance.
+
+📁 See full logs in [`benchmarks/`](../../benchmarks/v1-single-threaded)
