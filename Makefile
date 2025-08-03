@@ -2,22 +2,25 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Iinclude
 
-# Source and object files
-SRCDIR = src
-OBJDIR = build
+# Versioned source directory (set this when calling make: make VERSION=v1-blocking)
+VERSION ?= v1-blocking
+
+SRCDIR = src/$(VERSION)
+OBJDIR = build/$(VERSION)
 
 SOURCES = $(wildcard $(SRCDIR)/*.c)
 OBJECTS = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SOURCES))
 
-# Output binary
-TARGET = server_app
+# Output binary per version
+TARGET = $(VERSION)-server
 
 # Default rule
 all: $(TARGET)
 
 # Link object files into executable
 $(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $@
+	@mkdir -p bin
+	$(CC) $(OBJECTS) -o bin/$@
 
 # Compile .c to .o
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
@@ -26,6 +29,6 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c
 
 # Clean rule
 clean:
-	rm -rf $(OBJDIR) $(TARGET)
+	rm -rf build bin *.o *-server
 
 .PHONY: all clean
