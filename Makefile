@@ -2,8 +2,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Iinclude
 
-# Versioned source directory (set this when calling make: make VERSION=v1-blocking)
-VERSION ?= v1-blocking
+# Versioned source directory (set this when calling make: make VERSION=v1-single-threaded)
+VERSION ?= v1-single-threaded
 
 SRCDIR = src/$(VERSION)
 OBJDIR = build/$(VERSION)
