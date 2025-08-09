@@ -84,7 +84,7 @@ void send_http_error(int client_fd, int status_code, const char *message)
                        status_code, message, strlen(message), message);
 
     // Check for buffer overflow
-    if (len >= sizeof(response))
+    if (len < 0 || (size_t)len >= sizeof(response))
     {
         log_error("send_http_error: HTTP response too large for buffer");
         return;
