@@ -1,7 +1,8 @@
-#include "route_config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "route_config.h"
+#include "error_handler.h"
 
 #define MAX_LINE_LEN 256
 
@@ -9,14 +10,14 @@ int load_routes(const char *filename, Route *routes, int max_routes)
 {
     if (!filename || !routes || max_routes <= 0)
     {
-        perror("Invalid parameter to load the routes");
+        log_error("Invalid parameter to load the routes");
         return -1;
     }
     // Open the config file for reading
     FILE *file = fopen(filename, "r");
     if (!file)
     {
-        perror("Could not open routes file");
+        log_errno("Could not open routes file: %s", filename);
         return -1; // Error: file couldn't be opened
     }
 
@@ -57,7 +58,7 @@ int load_routes(const char *filename, Route *routes, int max_routes)
         if (parts != 3)
         {
             // If the line doesn't match format, warn and skip
-            printf("Invalid route line: %s\n", line);
+            log_error("Invalid route line format: '%s'", line);
             continue;
         }
 
@@ -92,13 +93,13 @@ Route *find_backend(Route *routes, int route_count, const char *path)
 {
     if (!routes || !route_count || !path)
     {
-        perror("Invalid parameter to load the routes");
+        log_error("find_backend: Invalid parameters (routes=%p, route_count=%d, path=%p)", (void *)routes, route_count, (void *)path);
         return NULL;
     }
 
     if (path[0] != '/')
     {
-        fprintf(stderr, "find_backend: Path must start with '/'\n");
+        log_error("find_backend: Path must start with '/' (path='%s')", path);
         return NULL;
     }
 

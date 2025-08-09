@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 
 #include "server.h"
+#include "error_handler.h"
 
 int setup_server(int port)
 {
@@ -15,17 +16,17 @@ int setup_server(int port)
     server_id = socket(AF_INET, SOCK_STREAM, 0);
     if (server_id < 0)
     {
-        perror("Socket creation fialed");
-        exit(EXIT_FAILURE);
+        log_errno("Socket creation failed");
+        return -1;
     }
 
     // Add this block here to reuse the port immediately
     int opt = 1;
     if (setsockopt(server_id, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
     {
-        perror("setsockopt failed");
+        log_errno("setsockopt failed");
         close(server_id);
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     // initalizing memory for address variable
@@ -40,9 +41,9 @@ int setup_server(int port)
     // despit define address as specific structure struct sockaddr_in for IPv4 address, bind fucntion expect to work with multiple protocols, they work with the generic struct sockaddr type.thats why type casted in bind function
     if (bind(server_id, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
-        perror("Bind failed");
+        log_errno("Bind failed on port %d", port);
         close(server_id);
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     // listening function
@@ -93,9 +94,9 @@ int setup_server(int port)
 
     if (listen(server_id, 512) < 0)
     {
-        perror("Listening failed");
+        log_errno("Listening failed");
         close(server_id);
-        exit(EXIT_FAILURE);
+        return -1;
     }
     return server_id;
 }
@@ -105,7 +106,12 @@ int accept_client(int server_id)
     struct sockaddr_in client_addr;
     socklen_t len = sizeof(client_addr);
     int client_id = accept(server_id, (struct sockaddr *)&client_addr, (socklen_t *)&len);
-    if (client_id >= 0)
+    if (client_id < 0)
+    {
+        log_errno("accept failed");
+        return -1;
+    }
+    else
     {
         printf("Connection from %s:%d\n",
                inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));

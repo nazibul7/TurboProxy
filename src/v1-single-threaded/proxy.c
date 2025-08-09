@@ -7,6 +7,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include "proxy.h"
+#include "error_handler.h"
 
 int connect_to_target(char *host, int port)
 {
@@ -19,6 +20,7 @@ int connect_to_target(char *host, int port)
     struct hostent *server = gethostbyname(host);
     if (server == NULL)
     {
+        log_error("No such host: %s", host);
         printf("Error: No such host: %s\n", host);
         return -1;
     }
@@ -28,7 +30,7 @@ int connect_to_target(char *host, int port)
 
     if (socket_fd < 0)
     {
-        printf("OK");
+        log_errno("Failed to create socket");
         return -1;
     }
 
@@ -42,7 +44,7 @@ int connect_to_target(char *host, int port)
     printf("%s\n", server->h_name);
     if (connect(socket_fd, (struct sockaddr *)&target_addr, sizeof(target_addr)) < 0)
     {
-        perror("Failed to connect to target");
+        log_errno("Failed to connect to target %s:%d", host, port);
         close(socket_fd);
         return -1;
     }
@@ -75,14 +77,19 @@ int forward_request(int targetFd, char *request_data, int length)
             {
                 continue;
             }
-            else
+            if (errno == EPIPE || errno == ECONNRESET)
             {
+                log_error("forward_request: connection closed by peer (errno=%d)", errno);
                 return -1;
             }
+
+            log_errno("forward_request: send failed");
+            return -1;
         }
         if (sent == 0) // No progress? Connection broken
         {
-            break;
+            log_error("forward_request: send returned 0 bytes (connection possibly closed)");
+            return -1;
         }
         total_sent += sent; // Update how much we've sent
     }
@@ -142,12 +149,15 @@ int relay_response(int targetFd, int clientFd)
             if (errno == EINTR)
                 continue;
             else
+            {
+                log_errno("relay_response: recv failed");
                 return -1;
+            }
         }
         else if (bytes_read == 0)
         {
             // Connection closed by target server
-            printf("Target server closed connection\n");
+            log_error("relay_response: target server closed connection");
             break;
         }
 
@@ -167,26 +177,30 @@ int relay_response(int targetFd, int clientFd)
                  * If you ignore SIGPIPE (e.g., with signal(SIGPIPE, SIG_IGN)), the send() call returns -1 with errno set to EPIPE, allowing your program to handle the error gracefully without crashing.
                  */
 
-                 /**
-                  * ECONNRESET (Connection reset by peer)
-                  * Means that the connection was forcibly closed by the remote side.
-                  * It usually occurs when the remote client TCP stack abruptly closes the connection or crashes.
-                  * When you try to read or write on such a socket, the kernel informs you by returning an error with errno set to ECONNRESET.
-                  * This is a common error in network programming and indicates that the peer closed the socket unexpectedly.
-                  */
+                /**
+                 * ECONNRESET (Connection reset by peer)
+                 * Means that the connection was forcibly closed by the remote side.
+                 * It usually occurs when the remote client TCP stack abruptly closes the connection or crashes.
+                 * When you try to read or write on such a socket, the kernel informs you by returning an error with errno set to ECONNRESET.
+                 * This is a common error in network programming and indicates that the peer closed the socket unexpectedly.
+                 */
                 if (errno == EPIPE || errno == ECONNRESET)
                 {
-                    fprintf(stderr, "Client disconnected (EPIPE or ECONNRESET)\n");
+                    log_errno("relay_response: client disconnected (errno=%d)", errno);
                     return -1;
                 }
-                perror("send failed");
+                log_errno("relay_response: send failed");
                 return -1;
             }
-
+            /**
+             *  According to POSIX and common socket programming practice, documented in StackOverflow, a read() or recv() returning 0 means:
+             *  - Remote peer closed connection normally
+             *  - No error, just that no bytes were read" because the remote socket was closed gracefully
+             *  - Do not consider it an error; treat it as connection end.
+             */
             if (bytes_sent == 0)
             {
-                // Unusual: send sent 0 bytes
-                fprintf(stderr, "send returned 0 bytes\n");
+                log_error("relay_response: send returned 0 bytes");
                 return -1;
             }
 

@@ -5,11 +5,13 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <errno.h>
 #include "server.h"
 #include "request_parser.h"
 #include "proxy.h"
 #include "route_config.h"
 #include "rebuild_request.h"
+#include "error_handler.h"
 
 #define PORT 8000
 #define BUFFER_SIZE 16384
@@ -24,7 +26,7 @@ int main()
     server_id = setup_server(PORT);
     if (server_id < 0)
     {
-        perror("Failed to start server");
+        log_error("Failed to start server");
         return 1;
     }
     printf("Server is listening on port %d\n", PORT);
@@ -35,14 +37,18 @@ int main()
     int route_count = load_routes("routes.conf", routes, MAX_ROUTES);
     if (route_count <= 0)
     {
-        perror("No routes loaded");
+        log_error("No routes loaded");
         return 1;
     }
+
     while (1)
     {
         client_id = accept_client(server_id);
         if (client_id < 0)
+        {
+            log_error("Failed to accept client connection");
             continue;
+        }
 
         memset(buffer, 0, BUFFER_SIZE);
 
@@ -51,8 +57,30 @@ int main()
         bool req_parsed = false;
 
         int bytes_read = read(client_id, buffer, BUFFER_SIZE - 1);
-        if (bytes_read <= 0)
+        if (bytes_read < 0)
         {
+            if (errno == EINTR) // Interrupted, retry
+                continue;
+            // For READ, you get: ECONNRESET, but not EPIPE
+            if (errno == ECONNRESET)
+            {
+                log_errno("Client disconnected (ECONNRESET)");
+            }
+            else
+            {
+                log_errno("Failed to read response");
+            }
+            goto cleanup;
+        }
+        /**
+         *  According to POSIX and common socket programming practice, documented in StackOverflow, a read() or recv() returning 0 means:
+         *  - Remote peer closed connection normally
+         *  - No error, just that no bytes were read" because the remote socket was closed gracefully
+         *  - Do not consider it an error; treat it as connection end.
+         */
+        if (bytes_read == 0)
+        {
+            log_error("send returned 0 bytes (connection closed)");
             goto cleanup;
         }
 
@@ -60,7 +88,8 @@ int main()
         HttpRequest req;
         if (parse_http_request(buffer, &req) != 0)
         {
-            fprintf(stderr, "Failed to parse request\n");
+            log_error("Failed to parse HTTP request\n");
+            send_http_error(client_id, 400, "Bad Request");
             goto cleanup;
         }
         req_parsed = true;
@@ -106,15 +135,8 @@ int main()
         Route *backend = find_backend(routes, route_count, req.path);
         if (!backend)
         {
-            const char *error_response =
-                "HTTP/1.1 502 Bad Gateway\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: 12\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "Bad Gateway\n";
-
-            write(client_id, error_response, strlen(error_response));
+            log_error("No backend found for path: %s", req.path);
+            send_http_error(client_id, 502, "Bad Gateway");
             goto cleanup;
         }
 
@@ -124,15 +146,8 @@ int main()
 
         if (targetfd < 0)
         {
-            const char *error_response =
-                "HTTP/1.1 502 Bad Gateway\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: 12\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "Bad Gateway\n";
-
-            write(client_id, error_response, strlen(error_response));
+            log_error("Failed to connect to backend %s:%d", backend->host, backend->port);
+            send_http_error(client_id, 502, "Bad Gateway");
             goto cleanup;
         }
 
@@ -174,30 +189,15 @@ int main()
 
         if (build_request < 0)
         {
-            const char *error_response =
-                "HTTP/1.1 500 Internal Server Error\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: 21\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "Internal Server Error";
-
-            write(client_id, error_response, strlen(error_response));
+            log_error("Failed to rebuild request from client %d", client_id);
+            send_http_error(client_id, 500, "Internal Server Error");
             goto cleanup;
         }
 
         if (forward_request(targetfd, request, strlen(request)) < 0)
         {
-            // Send 502 Bad Gateway back to the client
-            const char *error_response =
-                "HTTP/1.1 502 Bad Gateway\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: 12\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "Bad Gateway\n";
-
-            write(client_id, error_response, strlen(error_response));
+            log_errno("Failed to forward request to backend %s:%d", backend->host, backend->port);
+            send_http_error(client_id, 502, "Bad Gateway");
             goto cleanup;
         }
 
@@ -212,7 +212,8 @@ int main()
 
         if (relay_response(targetfd, client_id) < 0)
         {
-            fprintf(stderr, "Failed to relay response to client\n");
+            log_error("Failed to relay response to client");
+            send_http_error(client_id, 502, "Bad Gateway");
             goto cleanup;
         }
 
