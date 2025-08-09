@@ -50,9 +50,9 @@ int rebuild_request(HttpRequest *req, char *buffer, char *client_ip, size_t buff
 
             log_error("rebuild_request: buffer too small while adding header '%s: %s' (needed=%d, available=%zu)",
                       req->Headers[i].key, req->Headers[i].value, written, buffer_size - write_pos);
-            write_pos += written;
             return -1;
         }
+        write_pos += written;
     }
 
     // Add Connection header either close || keep-alive
