@@ -2,16 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <unistd.h>
 #include <stdbool.h>
 #include <signal.h>
 #include <errno.h>
-#include "server.h"
-#include "request_parser.h"
-#include "proxy.h"
-#include "route_config.h"
-#include "rebuild_request.h"
-#include "error_handler.h"
+#include "common/server.h"
+#include "common/request_parser.h"
+#include "common/proxy.h"
+#include "common/route_config.h"
+#include "common/rebuild_request.h"
+#include "common/error_handler.h"
 
 #define PORT 8000
 #define BUFFER_SIZE 16384
