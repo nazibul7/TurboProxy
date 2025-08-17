@@ -37,6 +37,7 @@ int main()
     if (route_count <= 0)
     {
         log_error("No routes loaded");
+        close(server_id);
         return 1;
     }
 
@@ -229,7 +230,7 @@ int main()
          * requests due to resource leaks and stale connection state.
          */
 
-        printf("DEBUG: closing backend and client socket\n");
+        printf("DEBUG: closing target backend and client socket\n");
 
     cleanup:
         // Clean up resources for this client
