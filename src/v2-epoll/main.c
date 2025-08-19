@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include <unistd.h>
+#include <errno.h>
 #include <common/server.h>
 #include <v2-epoll/epoll_server.h>
 #include <common/error_handler.h>
@@ -77,6 +78,59 @@ int main()
 
     while (1)
     {
+        int nfds = epoll_server_wait(epoll_fd, events, -1);
+
+        if (nfds < 0)
+        {
+            /**
+             * Interrupted by signal — just restart epoll_wait
+             */
+            if (errno == EINTR)
+                continue;
+            else
+            {
+                log_error("main: epoll_wait failed");
+                break;
+            }
+        }
+
+        for (int i = 0; i < nfds; i++)
+        {
+            if (events[i].data.fd == server_fd)
+            {
+                // accepts the new connections which came to connects
+                client_fd = accept_client(server_fd);
+                if (client_fd < 0)
+                {
+                    log_error("Failed to accept the client fd");
+                    continue;
+                }
+
+                // make client_ids non-blocking
+                if (set_non_blocking(client_fd))
+                {
+                    log_error("main: failed to set client fd non-blocking");
+                    close(client_fd);
+                    continue;
+                }
+                /**
+                 * Here for Event flag for epoll that tells you:
+                 * "This file descriptor (socket) has data
+                 * you can read *without blocking*."
+                 */
+                event.events = EPOLLIN;
+                event.data.fd = client_fd;
+
+                if (epoll_server_add(epoll_fd, client_fd, &event)<0){
+                    log_error("Failed to add client fd in epoll watchlist");
+                    close(client_fd);
+                    continue;
+                }
+            }
+            else
+            {
+            }
+        }
     }
 
     return 0;
