@@ -8,7 +8,8 @@
 int epoll_server_init()
 {
     int epoll_fd = epoll_create1(0);
-    if (epoll_fd < 0){
+    if (epoll_fd < 0)
+    {
         log_errno("epoll_server_init: epoll_create1() failed");
         return -1;
     }
@@ -24,7 +25,8 @@ int epoll_server_init()
 int epoll_server_add(int epoll_fd, int fd, struct epoll_event *event)
 {
     int ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, event);
-    if (ret < 0){
+    if (ret < 0)
+    {
         log_errno("epoll_server_add: epoll_ctl EPOLL_CTL_ADD failed");
         return -1;
     }
@@ -76,6 +78,14 @@ int set_non_blocking(int fd)
     }
     return 0;
 }
+
+/**
+ * epoll_wait() → Suspend the calling thread until one or more fds in the kernel’s watchlist become ready, or a timeout occurs.
+ * timeout → How long to wait:
+ *   - 0 → return immediately (non-blocking poll)
+ *   - -1 → wait forever until at least one event is ready
+ *   - >0 → wait that many milliseconds
+ */
 
 int epoll_server_wait(int epoll_fd, struct epoll_event *events, int timeouts)
 {
