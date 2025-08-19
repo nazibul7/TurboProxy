@@ -18,8 +18,8 @@
 TurboProxy is a high-performance HTTP proxy server written in C, showcasing the evolution of system-level network programming across multiple versions:
 
 - 🔹 **v1.0** — Blocking, single-threaded proxy
-- 🔹 **v2.0** — Threaded proxy with basic concurrency
-- 🔹 **v3.0** — Epoll-based event-driven architecture
+- 🔹 **v2.0** — Epoll-based event-driven architecture
+- 🔹 **v3.0** — Threaded proxy with basic concurrency
 - 🔹 **v4.0** — Epoll + thread pool + keep-alive + LRU caching
 
 This project is ideal for anyone exploring:
