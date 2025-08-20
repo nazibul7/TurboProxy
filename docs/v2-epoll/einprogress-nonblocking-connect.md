@@ -1,65 +1,66 @@
-The EINPROGRESS error only appears when you call connect() on a non-blocking socket.
+# 🔄 Non-blocking connect() and accept() with epoll
 
-🌐 Client side (connect())
+When using **non-blocking sockets**, `epoll` reports readiness at different stages for **client** and **server**.
 
-Client calls connect() on a non-blocking socket
+---
 
-Kernel starts the 3-way handshake (SYN → SYN/ACK ← ACK).
+## 🌐 Client side (`connect()`)
 
-Since it cannot complete immediately, connect() returns -1 with errno = EINPROGRESS.
+1. Client calls `connect()` on a non-blocking socket.  
+   - Kernel begins the **3-way handshake**: `SYN → SYN/ACK ← ACK`.  
+   - `connect()` immediately returns `-1` with `errno = EINPROGRESS`.
 
-During handshake in progress
+2. While the handshake is in progress:  
+   - The socket is **not yet writable**.  
 
-The socket is not yet writable.
+3. When the handshake finishes:  
+   - The socket becomes **writable**, so `epoll` reports **`EPOLLOUT`**.  
+   - This means the connection is ready, and you can now `send()` data.
 
-After 3-way handshake completes (connection established)
+✅ **Client sees `EPOLLOUT` after handshake success.**
 
-The client’s socket becomes writable, so epoll reports EPOLLOUT.
+---
 
-This means: “you can now send data (connection is ready).”
+## 🖥️ Server side (`accept()`)
 
-✅ So: Client gets EPOLLOUT after handshake success.
+1. Server has the **listening socket** registered with `EPOLLIN`.  
 
+2. When the handshake completes (final ACK received from client):  
+   - The kernel **queues the new connection**.  
+   - At this moment, `epoll` reports **`EPOLLIN`** on the **listening socket**.  
+   - This is the signal to call `accept()`.
 
+3. After `accept()` returns a new client socket:  
+   - Register it with `epoll`.  
+   - Later, when the client sends real application data (e.g., HTTP request),  
+     `epoll` reports **`EPOLLIN`** on the client socket.
 
-🖥️ Server side (accept())
+✅ **Server gets EPOLLIN on the listening socket after handshake, then later EPOLLIN on the accepted client socket when real data arrives**
 
-Server is listening socket in epoll (registered with EPOLLIN).
+---
 
-When handshake finishes (after final ACK from client), the kernel queues the new connection.
+## 🔁 Sequence Diagram
 
-At this moment, the listening socket becomes readable, so epoll reports EPOLLIN on the listening fd.
-
-That’s the signal to call accept().
-
-After accept() returns a client fd
-
-That fd is also registered in epoll.
-
-When the client actually sends application data (e.g., HTTP request), epoll will notify with EPOLLIN on the client socket.
-
-✅ So: Server gets EPOLLIN on the listening socket after handshake, then later EPOLLIN on the accepted client socket when real data arrives.
-
-
-
-
-
+```text
 Client                          Server
   |                               |
   |                         [Listening socket]
-  |                         monitoring EPOLLIN
+  |                         (monitor EPOLLIN)
   |                               |
-connect() called (non-blocking)   |
-returns EINPROGRESS               |
+connect() non-blocking            |
+→ returns EINPROGRESS             |
   |                               |
-[Client socket monitoring EPOLLOUT]|
+[monitor EPOLLOUT]                |
   |                               |
-  |---- SYN ------------------>    |
+  |---- SYN ------------------>   |
   |                               |
-  |<--- SYN+ACK ---------------    |   ← 🔥 Server: EPOLLIN triggers HERE!
-  |                               |     (SYN+ACK sent, kernel has queued connection)
-  |                               |     accept() can be called safely
-  |---- ACK ------------------>    |
+  |<--- SYN+ACK ---------------   |  🔥 EPOLLIN triggers HERE!
+  |                               |    (SYN+ACK sent, kernel has queued connection)
+  |                               |    accept() can be called safely
+  |---- ACK ------------------>   |
   |                               |
-  | ← 🔥 Client: EPOLLOUT triggers HERE!
+  | ← 🔥 EPOLLOUT here!           |
+  |                               |  (client can now send data)
   |                               |
+  |---- HTTP Request ---------->  |
+  |                               |  🔥 EPOLLIN on accepted client socket
