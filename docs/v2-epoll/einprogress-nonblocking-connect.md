@@ -180,3 +180,63 @@ So even though the socket is writable, you just don’t get notified — because
 👉 Final Answer:
 Yes — an accepted socket is almost always immediately writable because its send buffer is empty after the handshake. That’s why EPOLLOUT would trigger if you register for it. The only exceptions are unusual conditions (buffer full, zero window, resource exhaustion).
 
+
+
+
+## 🔍 What Actually Happens During accept():
+
+### Before accept():
+
+```c
+// Listening socket - NO send buffer for individual connections
+int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+bind(server_socket, ...);
+listen(server_socket, ...);  // Just listening, no data buffers per connection
+```
+
+### During accept():
+
+```c
+int client_fd = accept(server_socket, ...);
+```
+
+### What the kernel does internally:
+
+Takes the completed connection from the accept queue
+Creates a brand new socket structure (client_fd)
+Allocates fresh send/receive buffers for this new socket
+Initializes these buffers as empty
+Returns the new file descriptor
+
+### 📊 Visual Representation:
+
+```
+Before accept():
+┌─────────────────┐
+│  server_socket  │
+│   (listening)   │  ← No individual connection buffers
+│                 │
+│  Accept Queue:  │
+│  [conn1][conn2] │  ← Completed connections waiting
+└─────────────────┘
+
+After accept():
+┌─────────────────┐       ┌─────────────────┐
+│  server_socket  │       │   client_fd     │ ← NEW socket created!
+│   (listening)   │       │                 │
+│                 │       │ Send Buffer:    │ ← FRESH/EMPTY buffer
+│  Accept Queue:  │  ────▶│ [            ] │   allocated by kernel
+│  [conn2]        │       │                 │
+│                 │       │ Recv Buffer:    │ ← FRESH/EMPTY buffer  
+└─────────────────┘       │ [            ] │   allocated by kernel
+                          └─────────────────┘
+
+```
+
+### 💡 The Key Distinction:
+
+**Writable** = "Can I put data INTO this buffer?"
+    Empty buffer = YES, has space = **Writable**
+
+**Readable** = "Is there data FOR ME in this buffer?"
+    Empty buffer = NO, nothing to read = **NOT Readable**
