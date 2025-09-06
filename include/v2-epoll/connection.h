@@ -34,9 +34,26 @@ typedef struct connection
     size_t response_sent_bytes; /**< Bytes of response already sent to client. */
 
     /* ---------------- Error Handling ---------------- */
-    int last_error;          /**< Last errno or internal error code. */
-    
+    int last_error; /**< Last errno or internal error code. */
+
     /* ---------------- Client Metadata ---------------- */
     char client_ip[16]; /**< Client IPv4 string ("xxx.xxx.xxx.xxx"). */
 
 } connection_t;
+
+/**
+ * @brief Allocate and initialize a new proxy connection object.
+ *
+ * @param client_fd File descriptor of the accepted client socket.
+ * @return Pointer to a newly allocated connection_t on success,
+ *         or NULL on allocation/initialization failure.
+ */
+connection_t *connection_create(int client_fd);
+
+
+/**
+ * @brief Clean up and release all resources associated with a proxy connection.
+ * 
+ * @param conn Pointer to the connection_t object to free (may be NULL).
+ */
+void connection_free(connection_t *conn);
