@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdbool.h>
+#include <sys/types.h>
 
 #define SMALL_BUFFER_SIZE 1024
 
@@ -87,8 +89,6 @@ int buffer_ensure_space(buffer_t *buf, size_t needed);
  */
 void buffer_compact(buffer_t *buf);
 
-void buffer_compact(buffer_t *buf);
-
 /* -------------------------------------------------------------------------
  * Data Operations
  * ------------------------------------------------------------------------- */
@@ -128,32 +128,6 @@ int buffer_append(buffer_t *buf, const void *data, size_t len);
  *                      (consumed)    (available data: "World")
  */
 void buffer_consume(buffer_t *buf, size_t bytes);
-
-/* -------------------------------------------------------------------------
- * File Descriptor I/O
- * ------------------------------------------------------------------------- */
-
-/**
- *@brief Read from a file descriptor into into available buffer space.
- *
- * Automatically expands if space is insufficient.
- *
- * @param buf Pointer to buffer object.
- * @param fd File descriptor to read from.
- * @return Number of bytes read, 0 for EOF, or -1 on error.
- */
-ssize_t buffer_read_from_fd(buffer_t *buf, int fd);
-
-/**
- * @brief Write buffered data to a file descriptor.
- *
- * Marks written data as consumed.
- *
- * @param buf Pointer to buffer object.
- * @param fd File descriptor to write to.
- * @return Number of bytes written, 0 if nothing to write, or -1 on error.
- */
-ssize_t buffer_write_to_fd(buffer_t *buf, int fd);
 
 /* -------------------------------------------------------------------------
  * Query Functions
