@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <errno.h>
 #include "common/server.h"
 #include "common/error_handler.h"
 
@@ -108,6 +109,11 @@ int accept_client(int server_id)
     int client_id = accept(server_id, (struct sockaddr *)&client_addr, (socklen_t *)&len);
     if (client_id < 0)
     {
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            return -1; //"No connection available" - not an error
+        }
         log_errno("accept failed");
         return -1;
     }
