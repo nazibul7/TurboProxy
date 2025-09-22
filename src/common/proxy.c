@@ -197,6 +197,16 @@ int relay_response(int targetFd, int clientFd)
              *  - Remote peer closed connection normally
              *  - No error, just that no bytes were read" because the remote socket was closed gracefully
              *  - Do not consider it an error; treat it as connection end.
+             *  - recv() == 0 → EOF, close connection gracefully.
+             *
+             *  But for here send() returning 0:
+             *  - Unusual behavior - means no bytes were sent, but no error occurred
+             *  - Potentially problematic - your data wasn't sent
+             *  - May indicate - socket buffer is full, connection issues, or other problems
+             *  - code is also correct in treating send() returning 0 as an error, 
+             *    because send() should return >0 bytes sent or -1 on error; 0 means no progress and likely closed socket.
+             *  - send() == 0 → treat as error, close and cleanup socket.
+             *
              */
             if (bytes_sent == 0)
             {
