@@ -9,7 +9,7 @@
 #include <common/error_handler.h>
 #include <v2-epoll/epoll_server.h>
 
-int connect_to_target_nb(char *host, int port, int epoll_fd)
+int connect_to_target_nb(char *host, int port)
 {
     char *colon = strchr(host, ':');
     if (colon)

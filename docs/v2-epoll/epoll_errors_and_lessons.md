@@ -107,7 +107,7 @@ if (current_fd == server_fd) {
 ### Code Problem
 ```c
 // ❌ No tracking of which client belongs to which backend connection
-int targetfd = connect_to_target_nb(backend->host, backend->port, epoll_fd);
+int targetfd = connect_to_target_nb(backend->host, backend->port);
 // Later, when backend responds, we don't know which client to send it to
 ```
 

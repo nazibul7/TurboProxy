@@ -1,3 +1,4 @@
+#pragma once
 
 /**
  * @brief Connects to specified non-blockin target backend host & port
@@ -7,4 +8,4 @@
  * @return Socket file descriptor success & -1 on error
  */
 
-int connect_to_target_nb(char *host, int port, int epoll_fd);
+int connect_to_target_nb(char *host, int port);
