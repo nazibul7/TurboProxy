@@ -131,7 +131,7 @@ ssize_t rebuild_request(HttpRequest *req, char *buffer, char *client_ip, size_t 
         memcpy(buffer + write_pos, req->body, req->body_length);
         write_pos += req->body_length;
     }
-    return 0;
+    return write_pos;
 }
 
 int get_client_ip(int client_fd, char *ip_buffer, size_t buffer_size)
