@@ -5,7 +5,7 @@
 #include "common/rebuild_request.h"
 #include "common/error_handler.h"
 
-int rebuild_request(HttpRequest *req, char *buffer, char *client_ip, size_t buffer_size)
+ssize_t rebuild_request(HttpRequest *req, char *buffer, char *client_ip, size_t buffer_size)
 {
     // validate input parameter
     if (!req || !buffer || buffer_size == 0)

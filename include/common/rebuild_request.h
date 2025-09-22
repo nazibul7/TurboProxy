@@ -15,7 +15,7 @@
  * @return 0 on success & -1 on failure
  */
 
-int rebuild_request(HttpRequest *req, char *buffer,char *client_ip ,size_t buffer_size);
+ssize_t rebuild_request(HttpRequest *req, char *buffer,char *client_ip ,size_t buffer_size);
 
 /**
  * @brief Function to get client IP from socket
