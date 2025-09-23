@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <common/server.h>
 #include <v2-epoll/epoll_server.h>
 #include <common/error_handler.h>
@@ -11,6 +13,10 @@
 #include <common/request_parser.h>
 #include <common/proxy.h>
 #include <common/rebuild_request.h>
+#include <v2-epoll/epoll_proxy.h>
+#include <v2-epoll/connection.h>
+#include <v2-epoll/buffer_io.h>
+#include <v2-epoll/connection_handler.h>
 
 #define PORT 8000
 #define BUFFER_SIZE 16384
@@ -54,9 +60,14 @@ int main()
      * - Which user data should be returned to u when those events happens
      */
 
+    static connection_t listener;
+    memset(&listener, 0, sizeof(listener));
+    listener.client_fd = server_fd;
+    listener.state = CONN_LISTENING;
+
     struct epoll_event event, events[EPOLL_MAX_EVENTS];
     event.events = EPOLLIN;
-    event.data.fd = server_fd;
+    event.data.ptr = &listener;
 
     /**
      * epoll_server_add → Add an fd from the kernel’s watchlist.
@@ -80,6 +91,8 @@ int main()
         return 1;
     }
 
+    handler_status_t status = HANDLER_OK;
+
     while (1)
     {
         int nfds = epoll_server_wait(epoll_fd, events, -1);
@@ -102,10 +115,21 @@ int main()
 
         for (int i = 0; i < nfds; i++)
         {
-            if (events[i].data.fd == server_fd)
+            connection_t *conn = (connection_t *)events[i].data.ptr;
+
+            if (conn->state == CONN_LISTENING)
             {
+                /**
+                 * accept() never returns EINPROGRESS, because accepting a connection is different:
+                 * - either a connection is ready to accept, or it isn’t.
+                 * - There’s no “in-progress” state like a TCP handshake.
+                 */
                 // accepts the new connections which came to connects
-                client_fd = accept_client(server_fd);
+                client_fd = accept_client(listener.client_fd);
+                if (client_fd == -1)
+                {
+                    continue; // No connection - move to next epoll event
+                }
                 if (client_fd < 0)
                 {
                     log_error("Failed to accept the client fd");
@@ -119,163 +143,70 @@ int main()
                     close(client_fd);
                     continue;
                 }
+
+                connection_t *new_conn = connection_create(client_fd);
+                if (!new_conn)
+                {
+                    close(client_fd);
+                    log_error("connection_create failed for fd=%d", client_fd);
+                    continue;
+                }
+
                 /**
                  * Here for Event flag for epoll that tells you:
                  * "This file descriptor (socket) has data
                  * you can read *without blocking*."
                  */
                 event.events = EPOLLIN;
-                event.data.fd = client_fd;
+                event.data.ptr = new_conn;
 
                 if (epoll_server_add(epoll_fd, client_fd, &event) < 0)
                 {
                     log_error("Failed to add client fd in epoll watchlist");
-                    close(client_fd);
+                    connection_free(new_conn, epoll_fd);
                     continue;
                 }
+                
+                printf("✅ New client connection created: fd=%d, state=%d\n",
+                       new_conn->client_fd, new_conn->state);
             }
             else
             {
-                char buffer[BUFFER_SIZE];
-                /** reset to zero */
-                memset(buffer, 0, BUFFER_SIZE);
-
-                int current_fd = events[i].data.fd;
-
-                /** Initialize variables for this client iteration */
-                int targetfd = -1;
-                bool req_parsed = false;
-
-                int bytes_read = read(current_fd, buffer, BUFFER_SIZE - 1);
-                if (bytes_read < 0)
+                /**----------------------2--handle readable events---------------------- */
+                if (events[i].events & EPOLLIN)
                 {
-                    if (errno == EINTR) // Interrupted, retry
-                        continue;
-                    // For READ, you get: ECONNRESET, but not EPIPE
-                    if (errno == ECONNRESET)
+                    if (conn->state == CONN_READING_REQUEST)
                     {
-                        log_errno("Client disconnected (ECONNRESET)");
+                        status = handle_client_readable(conn, routes, route_count, epoll_fd);
                     }
-                    else
+                    else if (conn->backend_fd >= 0 && conn->state == CONN_READING_RESPONSE)
                     {
-                        log_errno("Failed to read response");
+                        status = handle_backend_readable(conn, epoll_fd);
                     }
-                    goto cleanup;
                 }
-                /**
-                 *  According to POSIX and common socket programming practice, documented in StackOverflow, a read() or recv() returning 0 means:
-                 *  - Remote peer closed connection normally
-                 *  - No error, just that no bytes were read" because the remote socket was closed gracefully
-                 *  - Do not consider it an error; treat it as connection end.
-                 */
-                if (bytes_read == 0)
+
+                /**-----------------------handle writable events---------------------- */
+                if (events[i].events & EPOLLOUT)
                 {
-                    log_error("send returned 0 bytes (connection closed)");
-                    goto cleanup;
+                    if (conn->state == CONN_CONNECTING_BACKEND || conn->state == CONN_SENDING_REQUEST)
+                    {
+                        status = handle_backend_writable(conn, epoll_fd);
+                    }
+                    else if (conn->state == CONN_SENDING_RESPONSE)
+                    {
+                        status = handle_client_writable(conn, epoll_fd);
+                    }
                 }
 
-                printf("Received request:\n%s\n", buffer);
-
-                HttpRequest req;
-
-                if (parse_http_request(buffer, &req) != 0)
+                if (status == HANDLER_ERROR || status == HANDLER_CLOSED)
                 {
-                    log_error("Failed to parse HTTP request\n");
-                    send_http_error(current_fd, 400, "Bad Request");
-                    goto cleanup;
+                    connection_free(conn, epoll_fd); // free buffers, close fds
+                    continue;
                 }
-                req_parsed = true;
-
-                /** Find best backend based on path prefix*/
-                Route *backend = find_backend(routes, route_count, req.path);
-                if (!backend)
+                else if (status == HANDLER_OK && conn->state == CONN_DONE)
                 {
-                    log_error("No backend found for path: %s", req.path);
-                    send_http_error(current_fd, 502, "Bad Gateway");
-                    goto cleanup;
+                    connection_free(conn, epoll_fd); // one-shot: close after success
                 }
-
-                printf("Routing to backend: %s:%d for prefix: %s\n", backend->host, backend->port, backend->prefix);
-
-                targetfd = connect_to_target(backend->host, backend->port);
-
-                if (targetfd < 0)
-                {
-                    log_error("Failed to connect to backend %s:%d", backend->host, backend->port);
-                    send_http_error(current_fd, 502, "Bad Gateway");
-                    goto cleanup;
-                }
-
-                /** Get client IP */
-                char client_ip[16];
-
-                get_client_ip(current_fd, client_ip, sizeof(client_ip));
-
-                char request[MAX_REQUEST_SIZE];
-
-                int build_request = rebuild_request(&req, request, client_ip, sizeof(request));
-
-                if (build_request < 0)
-                {
-                    log_error("Failed to rebuild request from client %d", current_fd);
-                    send_http_error(current_fd, 500, "Internal Server Error");
-                    goto cleanup;
-                }
-
-                if (forward_request(targetfd, request, strlen(request)) < 0)
-                {
-                    log_errno("Failed to forward request to backend %s:%d", backend->host, backend->port);
-                    send_http_error(current_fd, 502, "Bad Gateway");
-                    goto cleanup;
-                }
-
-                /*
-                 * Note:
-                 * This proxy only handles one request per TCP connection.
-                 * It force-closes client_fd and target_fd after relay.
-                 * It must add 'Connection: close' to backend request and client response
-                 * to avoid keep-alive hangs.
-                 * See docs/connection-issues.md for details.
-                 */
-
-                if (relay_response(targetfd, current_fd) < 0)
-                {
-                    log_error("Failed to relay response to client");
-                    send_http_error(current_fd, 502, "Bad Gateway");
-                    goto cleanup;
-                }
-
-                /**
-                 * Close backend connection after successful response relay.
-                 *
-                 * This is critical because:
-                 * - Prevents file descriptor leaks (each connect_to_target() opens a new fd)
-                 * - Avoids backend connection state issues that can affect subsequent requests
-                 * - Prevents local port exhaustion on the proxy side
-                 * - Ensures proper cleanup of connection buffers and resources
-                 *
-                 * Without this, the proxy will work on first request but fail on subsequent
-                 * requests due to resource leaks and stale connection state.
-                 */
-
-                printf("DEBUG: closing target backend and client socket\n");
-
-            cleanup:
-                // Clean up resources for this client
-                if (req_parsed)
-                {
-                    free_http_request(&req);
-                }
-                if (targetfd != -1)
-                {
-                    close(targetfd);
-                }
-                if (current_fd >= 0)
-                {
-                    close(current_fd);
-                }
-                /**Continue to next client */
-                continue;
             }
         }
     }
