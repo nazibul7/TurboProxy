@@ -76,8 +76,6 @@ int connect_to_target_nb(char *host, int port)
      *     Later, you can check if it succeeded using select()/poll()/epoll() and getsockopt(SO_ERROR)".
      */
 
-    struct epoll_event event;
-
     /**Initiate connection with target backend */
     int ret = connect(socket_fd, (struct sockaddr *)&target_addr, sizeof(target_addr));
     if (ret < 0 && errno != EINPROGRESS)
@@ -86,31 +84,5 @@ int connect_to_target_nb(char *host, int port)
         close(socket_fd);
         return -1;
     }
-    if (ret < 0 && errno == EINPROGRESS)
-    {
-        event.events = EPOLLOUT | EPOLLERR;
-        event.data.fd = socket_fd;
-        if (epoll_server_add(epoll_fd, socket_fd, &event))
-        {
-            log_error("connect_to_target_nb: Failed to add socket fd in epoll watchlist");
-            close(socket_fd);
-            return -1;
-        }
-        return socket_fd;
-    }
-    // Connection completed immediately (rare)
-    else if (ret == 0)
-    {
-        event.events = EPOLLIN; // Ready for data
-        event.data.fd = socket_fd;
-
-        if (epoll_server_add(epoll_fd, socket_fd, &event) < 0)
-        {
-            log_error("connect_to_target_nb: Failed to add connected socket to epoll");
-            close(socket_fd);
-            return -1;
-        }
-
-        return socket_fd;
-    }
+    return socket_fd;
 }
