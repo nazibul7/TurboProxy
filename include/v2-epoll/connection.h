@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdbool.h>
 #include "buffer.h"
 #include "common/http_types.h"
@@ -22,17 +24,15 @@ typedef struct connection
     buffer_t request_buffer;    /**< Accumulates raw HTTP request from client. */
     HttpRequest parsed_request; /**< Parsed HTTP request (populated once parsing succeeds). */
     bool request_parsed;        /**< True once request has been fully parsed. */
-    Route selected_backend;     /**< Routing decision for backend (after parsing request). */
+    Route *selected_backend;     /**< Routing decision for backend (after parsing request). */
 
     /* ---------------- Backend Communication ---------------- */
-    char *rebuilt_request;       /**< Reconstructed/normalized request for backend (malloc’ed). */
-    size_t rebuilt_request_size; /**< Total size of rebuilt request. */
-    size_t request_sent_bytes;   /**< How many bytes already sent to backend. */
+    buffer_t rebuilt_request_buffer;       /**< Buffer holding reconstructed/normalized request for backend. */
+    bool backend_closed;
 
     /* ---------------- Response Handling ---------------- */
     buffer_t response_buffer;   /**< Buffer holding backend response data. */
-    size_t response_sent_bytes; /**< Bytes of response already sent to client. */
-
+    
     /* ---------------- Error Handling ---------------- */
     int last_error; /**< Last errno or internal error code. */
 
@@ -56,4 +56,4 @@ connection_t *connection_create(int client_fd);
  * 
  * @param conn Pointer to the connection_t object to free (may be NULL).
  */
-void connection_free(connection_t *conn);
+void connection_free(connection_t *conn,int epoll_fd);
