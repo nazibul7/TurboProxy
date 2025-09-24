@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <sys/types.h>
@@ -134,7 +136,7 @@ void buffer_consume(buffer_t *buf, size_t bytes);
  * ------------------------------------------------------------------------- */
 
 /**
- * @brief Get number of bytes available for reading.
+ * @brief Get number of bytes available for reading send / reading out.
  *
  * @param buf Pointer to buffer object.
  * @return Count of readable bytes. Returns the amount of data that can be read from the buffer
@@ -143,7 +145,7 @@ void buffer_consume(buffer_t *buf, size_t bytes);
 size_t buffer_available_data(const buffer_t *buf);
 
 /**
- * @brief Get number of bytes of free space in buffer
+ * @brief Get number of bytes of free space in buffer for recv / writing in.
  *
  * @param buf Pointer to buffer object.
  * @return Count of free space (size - len).
@@ -151,9 +153,21 @@ size_t buffer_available_data(const buffer_t *buf);
 size_t buffer_available_space(const buffer_t *buf);
 
 /**
- * @brief Get pointer to unread data in buffer.
+ * @brief Get pointer to unread data in buffer for send / reading out.
  *
  * @param buf Pointer to buffer object.
  * @return Returns a pointer to the start of unread data in the buffer.
  */
 char *buffer_read_ptr(const buffer_t *buf);
+
+
+/**
+ * @brief Get pointer to available space for writing in the buffer for recv / writing in.
+ *
+ * This returns a pointer to the current write position,
+ * where new incoming data can be written.
+ *
+ * @param buf Pointer to buffer object.
+ * @return Pointer to the start of free space in the buffer.
+ */
+char *buffer_write_ptr(const buffer_t *buf);
