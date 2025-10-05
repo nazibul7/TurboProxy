@@ -28,7 +28,7 @@ typedef struct connection
 
     /* ---------------- Backend Communication ---------------- */
     buffer_t rebuilt_request_buffer;       /**< Buffer holding reconstructed/normalized request for backend. */
-    bool backend_closed;
+    bool should_free_conn;
 
     /* ---------------- Response Handling ---------------- */
     buffer_t response_buffer;   /**< Buffer holding backend response data. */
