@@ -36,7 +36,22 @@ When using **non-blocking sockets**, `epoll` reports readiness at different stag
      `epoll` reports **`EPOLLIN`** on the client socket.
 
 ✅ **Server gets EPOLLIN on the listening socket after handshake, then later EPOLLIN on the accepted client socket when real data arrives**
+---
+## After 3-way handshake
 
+✅ Both sides get kernel send/receive buffers (automatically managed)
+✅ Send buffers are empty → EPOLLOUT ready on both sides
+✅ Receive buffers are empty → EPOLLIN not ready on both sides
+
+### Server Side (after accept()):
+
+✅ EPOLLOUT set immediately → Send buffer is empty, ready to write
+✅ EPOLLIN NOT set → No data from client yet, nothing to read
+
+### Client Side (after connect()):
+
+✅ EPOLLOUT set immediately → Send buffer is empty, ready to write
+✅ EPOLLIN NOT set → No data from server yet, nothing to read
 ---
 
 ## 🔁 Sequence Diagram
