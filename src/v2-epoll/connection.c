@@ -28,6 +28,7 @@ connection_t *connection_create(int client_fd)
     conn->client_fd = client_fd;
     conn->backend_fd = -1;
     conn->state = CONN_READING_REQUEST;
+    conn->should_free_conn=false;
 
     if (buffer_init(&conn->request_buffer) != 0)
     {
