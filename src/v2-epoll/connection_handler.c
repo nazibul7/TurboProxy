@@ -63,7 +63,7 @@ handler_status_t handle_client_readable(connection_t *conn, Route *routes, int r
             get_client_ip(conn->client_fd, conn->client_ip, sizeof(conn->client_ip));
 
             /**Ensure buffer has space available for rebuild request */
-            if (buffer_ensure_space(&conn->rebuilt_request_buffer, 1024) != 0)
+            if (buffer_ensure_space(&conn->rebuilt_request_buffer, 4096) != 0)
             {
                 log_error("Failed to ensure buffer space for rebuilt request");
                 send_http_error(conn->client_fd, 500, "Internal Server Error");
@@ -175,7 +175,7 @@ handler_status_t handle_backend_writable(connection_t *conn, int epoll_fd)
 
         if (request_sent_to_backend == -1)
         {
-            log_error("Failed to forward request to backend %s:%d\n",
+            log_error("handle_backend_writable: Failed to forward request to backend %s:%d\n",
                       conn->selected_backend->host, conn->selected_backend->port);
             send_http_error(conn->client_fd, 502, "Bad Gateway");
             conn->state = CONN_ERROR;
@@ -231,7 +231,6 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
     else if (bytes == -2)
     {
         printf("handle_backend_readable: Backend sent EOF");
-        conn->backend_closed = true;
         conn->state = CONN_BACKEND_EOF;
     }
     else if (bytes == 0)
@@ -295,7 +294,6 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
         if (conn->state == CONN_BACKEND_EOF)
         {
             printf("Backend EOF with no data - closing connection");
-            conn->backend_closed = true;
             return HANDLER_CLOSED;
         }
     }
