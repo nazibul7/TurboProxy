@@ -71,16 +71,16 @@ connect() non-blocking            |
   |                               |
   |---- SYN ------------------>   |
   |                               |
-  |<--- SYN+ACK ---------------   |  🔥 EPOLLIN triggers HERE!
-  |                               |    (SYN+ACK sent, kernel has queued connection)
-  |                               |    accept() can be called safely
-  |---- ACK ------------------>   |
-  |                               |
-  | ← 🔥 EPOLLOUT here!           |
-  |                               |  (client can now send data)
+  |<--- SYN+ACK ---------------   |  
+  |                               |    
+  |                               |    
+  |---- ACK ------------------>   |🔥EPOLLIN triggers HERE!
+  |                               |(SYN+ACK sent, kernel has queued connection)    
+  | ← 🔥EPOLLOUT here!           | accept() can be called safely 
+  |                               |(client can now send data)
   |                               |
   |---- HTTP Request ---------->  |
-  |                               |  🔥 EPOLLIN on accepted client socket
+  |                               |🔥EPOLLIN on accepted client socket
 ```
 
 | Client Operation        | Server Operation            | Notes / Behavior                                      |
