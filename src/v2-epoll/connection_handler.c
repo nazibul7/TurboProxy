@@ -232,6 +232,7 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
     {
         printf("handle_backend_readable: Backend sent EOF");
         conn->state = CONN_BACKEND_EOF;
+        epoll_server_delete(epoll_fd, conn->backend_fd);
     }
     else if (bytes == 0)
     {
@@ -265,6 +266,7 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
                 if (conn->state == CONN_BACKEND_EOF)
                 {
                     printf("handle_backend_readable: Backend EOF and all data sent - closing");
+                    epoll_server_delete(epoll_fd, conn->backend_fd);
                     return HANDLER_CLOSED;
                 }
                 else
@@ -294,6 +296,7 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
         if (conn->state == CONN_BACKEND_EOF)
         {
             printf("Backend EOF with no data - closing connection");
+            epoll_server_delete(epoll_fd, conn->backend_fd);
             return HANDLER_CLOSED;
         }
     }
@@ -332,6 +335,7 @@ handler_status_t handle_client_writable(connection_t *conn, int epoll_fd)
             if (conn->state == CONN_BACKEND_EOF)
             {
                 printf("handle_client_writable: Backend closed and all data sent - closing connection");
+                epoll_server_delete(epoll_fd, conn->backend_fd);
                 return HANDLER_CLOSED;
             }
             else
