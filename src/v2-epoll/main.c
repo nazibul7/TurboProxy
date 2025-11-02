@@ -20,11 +20,15 @@
 
 #define PORT 8000
 #define BUFFER_SIZE 16384
+#define MAX_PENDING_FREE 1024
 
 int main()
 {
     // Ignore SIGPIPE globally so the server doesn't crash on client disconnects
     signal(SIGPIPE, SIG_IGN);
+
+    connection_t *pending_free[MAX_PENDING_FREE];
+    int pending_free_count = 0;
 
     int server_fd, client_fd, epoll_fd;
 
@@ -95,7 +99,7 @@ int main()
 
     while (1)
     {
-        int nfds = epoll_server_wait(epoll_fd, events, -1);
+        int nfds = epoll_server_wait(epoll_fd, events, 1);
 
         if (nfds < 0)
         {
@@ -113,9 +117,28 @@ int main()
             }
         }
 
+        pending_free_count = 0;
+
         for (int i = 0; i < nfds; i++)
         {
             connection_t *conn = (connection_t *)events[i].data.ptr;
+
+            printf("Event %d: events=0x%x, conn=%p\n", i, events[i].events, conn);
+
+            if (!conn)
+            {
+                printf("  WARNING: Skipping event for freed connection\n");
+                continue;
+            }
+
+            if (conn->should_free_conn)
+                continue;
+
+            if (conn)
+            {
+                printf("  client_fd=%d, backend_fd=%d, state=%d\n",
+                       conn->client_fd, conn->backend_fd, conn->state);
+            }
 
             if (conn->state == CONN_LISTENING)
             {
@@ -166,9 +189,10 @@ int main()
                     connection_free(new_conn, epoll_fd);
                     continue;
                 }
-                
+
                 printf("✅ New client connection created: fd=%d, state=%d\n",
                        new_conn->client_fd, new_conn->state);
+                continue;
             }
             else
             {
@@ -183,10 +207,19 @@ int main()
                     {
                         status = handle_backend_readable(conn, epoll_fd);
                     }
+
+                    if (status == HANDLER_ERROR || status == HANDLER_CLOSED)
+                    {
+                        conn->should_free_conn = true;
+                    }
+                    else if (status == HANDLER_OK && conn->state == CONN_DONE)
+                    {
+                        conn->should_free_conn = true;
+                    }
                 }
 
                 /**-----------------------handle writable events---------------------- */
-                if (events[i].events & EPOLLOUT)
+                if (!conn->should_free_conn && events[i].events & EPOLLOUT)
                 {
                     if (conn->state == CONN_CONNECTING_BACKEND || conn->state == CONN_SENDING_REQUEST)
                     {
@@ -196,18 +229,28 @@ int main()
                     {
                         status = handle_client_writable(conn, epoll_fd);
                     }
+                    if (status == HANDLER_ERROR || status == HANDLER_CLOSED)
+                    {
+                        conn->should_free_conn = true;
+                    }
+                    else if (status == HANDLER_OK && conn->state == CONN_DONE)
+                    {
+                        conn->should_free_conn = true;
+                    }
                 }
 
-                if (status == HANDLER_ERROR || status == HANDLER_CLOSED)
+                if (conn->should_free_conn)
                 {
-                    connection_free(conn, epoll_fd); // free buffers, close fds
-                    continue;
-                }
-                else if (status == HANDLER_OK && conn->state == CONN_DONE)
-                {
-                    connection_free(conn, epoll_fd); // one-shot: close after success
+                    if (pending_free_count < MAX_PENDING_FREE)
+                        pending_free[pending_free_count++] = conn;
+                    else
+                        log_error("Too many connections pending free!");
                 }
             }
+        }
+        for (int i = 0; i < pending_free_count; i++)
+        {
+            connection_free(pending_free[i], epoll_fd);
         }
     }
 
