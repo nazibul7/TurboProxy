@@ -1,0 +1,50 @@
+# ====== Build Artifacts ======
+/bin/
+/build/
+/obj/
+/out/
+*.o
+*.a
+*.so
+*.exe
+*.out
+
+# ====== Generated Files ======
+*.log
+*.pid
+*.tmp
+*.swp
+*.dSYM/
+*.core
+
+# ====== Editor / IDE ======
+.vscode/
+.idea/
+*.code-workspace
+
+# ====== OS Files ======
+.DS_Store
+Thumbs.db
+
+# ====== Makefiles / Autotools ======
+Makefile.in
+config.log
+config.status
+autom4te.cache/
+*.deps/
+*.d
+
+# ====== Debug / Profiling ======
+vgcore.*
+gmon.out
+perf.data
+
+# ====== Routes / Config (if sensitive) ======
+# Uncomment if your routes.conf contains local or secret targets
+# routes.conf
+
+# ====== Coverage / Testing ======
+*.gcda
+*.gcno
+*.gcov
+coverage/
