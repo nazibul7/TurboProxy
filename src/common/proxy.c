@@ -8,6 +8,7 @@
 #include <errno.h>
 #include "common/proxy.h"
 #include "common/error_handler.h"
+#include "common/debug.h"
 
 int connect_to_target(char *host, int port)
 {
@@ -21,7 +22,6 @@ int connect_to_target(char *host, int port)
     if (server == NULL)
     {
         log_error("No such host: %s", host);
-        printf("Error: No such host: %s\n", host);
         return -1;
     }
     struct sockaddr_in target_addr;
@@ -37,11 +37,17 @@ int connect_to_target(char *host, int port)
     memset(&target_addr, 0, sizeof(target_addr));
     target_addr.sin_family = AF_INET;
     target_addr.sin_port = htons(port);
-    // target_addr.sin_addr.s_addr = INADDR_ANY;   INADDR_ANY (value 0.0.0.0) is not valid for client connections. It's used on servers to listen on all interfaces, not to connect.
+
+    /** 
+     * target_addr.sin_addr.s_addr = INADDR_ANY;
+     * INADDR_ANY (value 0.0.0.0) is not valid for client connections.
+     * It's used on servers to listen on all interfaces, not to connect.
+     */
     memcpy(&target_addr.sin_addr, server->h_addr_list[0], server->h_length);
-    printf("%s\n", server->h_addr_list[0]);
-    printf("%d\n", server->h_length);
-    printf("%s\n", server->h_name);
+    DEBUG_PRINT("%s\n", server->h_addr_list[0]);
+    DEBUG_PRINT("%d\n", server->h_length);
+    DEBUG_PRINT("%s\n", server->h_name);
+
     if (connect(socket_fd, (struct sockaddr *)&target_addr, sizeof(target_addr)) < 0)
     {
         log_errno("Failed to connect to target %s:%d", host, port);
@@ -130,11 +136,11 @@ int relay_response(int targetFd, int clientFd)
     char buffer[16384];
     ssize_t bytes_read;
 
-    printf("DEBUG: relay_response started\n");
+    DEBUG_PRINT("DEBUG: relay_response started\n");
     while (1)
     {
         bytes_read = recv(targetFd, buffer, sizeof(buffer), 0);
-        printf("DEBUG: relay_response read %zd bytes\n", bytes_read);
+        DEBUG_PRINT("DEBUG: relay_response read %zd bytes\n", bytes_read);
 
         // bytes_read < 0 (-1)	Error occurred during read	Check errno; retry or handle error
         if (bytes_read < 0)
@@ -203,7 +209,7 @@ int relay_response(int targetFd, int clientFd)
              *  - Unusual behavior - means no bytes were sent, but no error occurred
              *  - Potentially problematic - your data wasn't sent
              *  - May indicate - socket buffer is full, connection issues, or other problems
-             *  - code is also correct in treating send() returning 0 as an error, 
+             *  - code is also correct in treating send() returning 0 as an error,
              *    because send() should return >0 bytes sent or -1 on error; 0 means no progress and likely closed socket.
              *  - send() == 0 → treat as error, close and cleanup socket.
              *
@@ -217,6 +223,6 @@ int relay_response(int targetFd, int clientFd)
             total_sent += bytes_sent;
         }
     }
-    printf("DEBUG: relay_response done\n");
+    DEBUG_PRINT("DEBUG: relay_response done\n");
     return 0;
 }

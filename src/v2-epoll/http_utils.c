@@ -1,12 +1,14 @@
-#define _GNU_SOURCE 
+#define _GNU_SOURCE
 #include <string.h>
 #include <stdlib.h>
 #include <v2-epoll/http_utils.h>
+#include <common/debug.h>
 
 bool http_request_complete(const buffer_t *buf)
 {
     if (!buf || buffer_available_data(buf) == 0)
     {
+        DEBUG_PRINT("Buffer is NULL or empty, request not complete yet\n");
         return false;
     }
 
@@ -17,7 +19,7 @@ bool http_request_complete(const buffer_t *buf)
     const char *headers_end = strstr(data, "\r\n\r\n");
     if (!headers_end)
     {
-        printf("Headers is not completed\n");
+        DEBUG_PRINT("Headers is not completed\n");
         return false;
     }
 
@@ -41,15 +43,17 @@ bool http_request_complete(const buffer_t *buf)
         while (*p == ' ' || *p == '\t')
             p++;
         size_t content_length = atoi(p);
-        
+
         size_t body_received = strlen(data) - header_len;
 
         /**Check if we have all the body data */
         if (body_received < content_length)
         {
+            DEBUG_PRINT("Partial body received (%zu/%zu)\n", body_received, content_length);
             return false;
         }
     }
 
+    DEBUG_PRINT("Request is complete (headers + body)\n");
     return true;
 }

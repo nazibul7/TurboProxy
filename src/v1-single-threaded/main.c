@@ -11,6 +11,7 @@
 #include "common/route_config.h"
 #include "common/rebuild_request.h"
 #include "common/error_handler.h"
+#include "common/debug.h"
 
 #define PORT 8000
 #define BUFFER_SIZE 16384
@@ -84,7 +85,7 @@ int main()
             goto cleanup;
         }
 
-        printf("Received request:\n%s\n", buffer);
+        DEBUG_PRINT("Received request:\n%s\n", buffer);
         HttpRequest req;
         if (parse_http_request(buffer, &req) != 0)
         {
@@ -140,7 +141,7 @@ int main()
             goto cleanup;
         }
 
-        printf("Routing to backend: %s:%d for prefix: %s\n", backend->host, backend->port, backend->prefix);
+        DEBUG_PRINT("Routing to backend: %s:%d for prefix: %s\n", backend->host, backend->port, backend->prefix);
 
         targetfd = connect_to_target(backend->host, backend->port);
 
@@ -230,7 +231,7 @@ int main()
          * requests due to resource leaks and stale connection state.
          */
 
-        printf("DEBUG: closing target backend and client socket\n");
+        DEBUG_PRINT("DEBUG: closing target backend and client socket\n");
 
     cleanup:
         // Clean up resources for this client

@@ -8,6 +8,7 @@
 #include <common/proxy.h>
 #include <common/error_handler.h>
 #include <v2-epoll/epoll_server.h>
+#include <common/debug.h>
 
 int connect_to_target_nb(char *host, int port)
 {
@@ -47,9 +48,9 @@ int connect_to_target_nb(char *host, int port)
 
     /** target_addr.sin_addr.s_addr = INADDR_ANY;   INADDR_ANY (value 0.0.0.0) is not valid for client connections. It's used on servers to listen on all interfaces, not to connect.*/
     memcpy(&target_addr.sin_addr, server->h_addr_list[0], server->h_length);
-    printf("%s\n", server->h_addr_list[0]);
-    printf("%d\n", server->h_length);
-    printf("%s\n", server->h_name);
+    DEBUG_PRINT("%s\n", server->h_addr_list[0]);
+    DEBUG_PRINT("%d\n", server->h_length);
+    DEBUG_PRINT("%s\n", server->h_name);
 
     /*
      * 1. What happens during connect():

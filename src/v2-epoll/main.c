@@ -17,6 +17,7 @@
 #include <v2-epoll/connection.h>
 #include <v2-epoll/buffer_io.h>
 #include <v2-epoll/connection_handler.h>
+#include <common/debug.h>
 
 #define PORT 8000
 #define BUFFER_SIZE 16384
@@ -24,8 +25,19 @@
 
 int main()
 {
-    // Ignore SIGPIPE globally so the server doesn't crash on client disconnects
+    /**
+     * OPTIMIZATION 1: Ignore SIGPIPE globally
+     * WHY: Prevents server crash when client closes connection unexpectedly.
+     * Without this, writing to closed socket sends SIGPIPE which terminates process.
+     */
     signal(SIGPIPE, SIG_IGN);
+
+    /**
+     * OPTIMIZATION 2: Batch cleanup of connections
+     * WHY: Freeing connections immediately during event processing can cause
+     * issues if the same connection has multiple events pending. Instead,
+     * mark for deletion and batch cleanup after all events processed.
+     */
 
     connection_t *pending_free[MAX_PENDING_FREE];
     int pending_free_count = 0;
@@ -40,6 +52,12 @@ int main()
         return 1;
     }
 
+    /**
+     * OPTIMIZATION 3: Non-blocking server socket
+     * WHY: Prevents accept() from blocking the entire event loop.
+     * In edge-triggered mode, this allows us to accept multiple connections
+     * in a loop without blocking.
+     */
     if (set_non_blocking(server_fd))
     {
         log_error("main: failed to set server fd non-blocking");
@@ -99,7 +117,7 @@ int main()
 
     while (1)
     {
-        int nfds = epoll_server_wait(epoll_fd, events, 1);
+        int nfds = epoll_server_wait(epoll_fd, events, -1);
 
         if (nfds < 0)
         {
@@ -117,26 +135,34 @@ int main()
             }
         }
 
+        /**
+         * Reset pending free counter per iteration
+         * WHY: Process all events first, then cleanup. This ensures
+         * connections aren't freed while they might still have events
+         * in the current batch.
+         */
         pending_free_count = 0;
 
+        /**
+         * Process all events in batch
+         * WHY: epoll_wait returns multiple ready events. Processing them
+         * all before next epoll_wait reduces syscall overhead.
+         */
         for (int i = 0; i < nfds; i++)
         {
             connection_t *conn = (connection_t *)events[i].data.ptr;
 
-            printf("Event %d: events=0x%x, conn=%p\n", i, events[i].events, conn);
+            DEBUG_PRINT("Event %d: events=0x%x, conn=%p\n", i, events[i].events, conn);
 
-            if (!conn)
+            if (!conn || conn->should_free_conn)
             {
-                printf("  WARNING: Skipping event for freed connection\n");
+                DEBUG_PRINT("  WARNING: Skipping event for freed connection\n");
                 continue;
             }
 
-            if (conn->should_free_conn)
-                continue;
-
             if (conn)
             {
-                printf("  client_fd=%d, backend_fd=%d, state=%d\n",
+                DEBUG_PRINT("  client_fd=%d, backend_fd=%d, state=%d\n",
                        conn->client_fd, conn->backend_fd, conn->state);
             }
 
@@ -190,7 +216,7 @@ int main()
                     continue;
                 }
 
-                printf("✅ New client connection created: fd=%d, state=%d\n",
+                DEBUG_PRINT("✅ New client connection created: fd=%d, state=%d\n",
                        new_conn->client_fd, new_conn->state);
                 continue;
             }

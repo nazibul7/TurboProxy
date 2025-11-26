@@ -3,6 +3,7 @@
 #include <string.h>
 #include "common/request_parser.h"
 #include "common/error_handler.h"
+#include "common/debug.h"
 
 int parse_http_request(char *buffer, HttpRequest *req)
 {
@@ -109,10 +110,9 @@ int parse_http_request(char *buffer, HttpRequest *req)
     {
         if (strlen(line) == 0)
         {
-            printf("Hello\n");
             break;
         }
-        printf("Header line: %s\n", line);
+        DEBUG_PRINT("Header line: %s\n", line);
         if (req->header_count >= MAX_HEADERS)
         {
             log_error("parse_http_request: Maximum header count (%d) reached, ignoring further headers", MAX_HEADERS);
@@ -129,7 +129,7 @@ int parse_http_request(char *buffer, HttpRequest *req)
         while (*value == ' ')
             value++; // trim space
 
-        printf("Header found - Key: '%s', Value: '%s'\n", key, value);
+        DEBUG_PRINT("Header found - Key: '%s', Value: '%s'\n", key, value);
         req->Headers[req->header_count].key = strdup(key);
         req->Headers[req->header_count].value = strdup(value);
         if (!req->Headers[req->header_count].key || !req->Headers[req->header_count].value)
@@ -159,27 +159,27 @@ int parse_http_request(char *buffer, HttpRequest *req)
                 return -1;
             }
             req->body_length = strlen(body_start);
-            printf("Body: %s\n", req->body);
+            DEBUG_PRINT("Body: %s\n", req->body);
         }
         else
         {
             req->body = NULL;
             req->body_length = 0;
-            printf("Body not found\n");
+            DEBUG_PRINT("Body not found\n");
         }
     }
     else
     {
         req->body = NULL;
         req->body_length = 0;
-        printf("Body not found\n");
+        DEBUG_PRINT("Body not found\n");
     }
 
     if (req->header_count > 0)
     {
         for (int i = 0; i < req->header_count; i++)
         {
-            printf("Header[%d]: %s => %s\n",
+            DEBUG_PRINT("Header[%d]: %s => %s\n",
                    i,
                    req->Headers[i].key,
                    req->Headers[i].value);
@@ -187,7 +187,7 @@ int parse_http_request(char *buffer, HttpRequest *req)
     }
     else
     {
-        printf("No headers were parsed.\n");
+        DEBUG_PRINT("No headers were parsed.\n");
     }
     free(parseCopy);
     free(request_line);

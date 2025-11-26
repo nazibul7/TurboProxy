@@ -11,6 +11,7 @@
 #include <common/rebuild_request.h>
 #include <v2-epoll/epoll_proxy.h>
 #include <v2-epoll/epoll_server.h>
+#include <common/debug.h>
 
 handler_status_t handle_client_readable(connection_t *conn, Route *routes, int route_count, int epoll_fd)
 {
@@ -35,7 +36,7 @@ handler_status_t handle_client_readable(connection_t *conn, Route *routes, int r
         if (http_request_complete(&conn->request_buffer))
         {
             conn->state = CONN_REQUEST_COMPLETE;
-            printf("Received request:\n%s\n", conn->request_buffer.data);
+            DEBUG_PRINT("Received request:\n%s\n", conn->request_buffer.data);
 
             if (parse_http_request(conn->request_buffer.data, &conn->parsed_request) != 0)
             {
@@ -56,7 +57,7 @@ handler_status_t handle_client_readable(connection_t *conn, Route *routes, int r
                 return HANDLER_ERROR;
             }
 
-            printf("Routing to backend: %s:%d for prefix: %s\n", conn->selected_backend->host, conn->selected_backend->port, conn->selected_backend->prefix);
+            DEBUG_PRINT("Routing to backend: %s:%d for prefix: %s\n", conn->selected_backend->host, conn->selected_backend->port, conn->selected_backend->prefix);
 
             /** Get client IP */
 
@@ -132,7 +133,7 @@ handler_status_t handle_client_readable(connection_t *conn, Route *routes, int r
         }
         else
         {
-            printf("Waiting for more data\n");
+            DEBUG_PRINT("Waiting for more data\n");
             return HANDLER_OK;
         }
     }
@@ -141,7 +142,7 @@ handler_status_t handle_client_readable(connection_t *conn, Route *routes, int r
 
 handler_status_t handle_backend_writable(connection_t *conn, int epoll_fd)
 {
-    // printf("DEBUG: handle_backend_writable called, state=%d\n", conn->state);
+    DEBUG_PRINT("DEBUG: handle_backend_writable called, state=%d\n", conn->state);
     if (conn->state == CONN_CONNECTING_BACKEND)
     {
 
@@ -162,8 +163,8 @@ handler_status_t handle_backend_writable(connection_t *conn, int epoll_fd)
             return HANDLER_ERROR;
         }
 
-        printf("Connected to backend %s:%d\n",
-               conn->selected_backend->host, conn->selected_backend->port);
+        DEBUG_PRINT("Connected to backend %s:%d\n",
+                    conn->selected_backend->host, conn->selected_backend->port);
 
         conn->state = CONN_SENDING_REQUEST;
     }
@@ -183,7 +184,7 @@ handler_status_t handle_backend_writable(connection_t *conn, int epoll_fd)
         }
         else if (request_sent_to_backend == -2)
         {
-            printf("Backend closed connection during request send");
+            DEBUG_PRINT("Backend closed connection during request send");
             return HANDLER_CLOSED;
         }
         else if (request_sent_to_backend == 0)
@@ -218,9 +219,9 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
     {
         return HANDLER_OK;
     }
-    printf("DEBUG: About to read from backend fd=%d\n", conn->backend_fd);
+    DEBUG_PRINT("DEBUG: About to read from backend fd=%d\n", conn->backend_fd);
     ssize_t bytes = buffer_read_from_fd(&conn->response_buffer, conn->backend_fd);
-    printf("DEBUG: buffer_read_from_fd returned %zd\n", bytes);
+    DEBUG_PRINT("DEBUG: buffer_read_from_fd returned %zd\n", bytes);
 
     if (bytes == -1)
     {
@@ -230,18 +231,18 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
     }
     else if (bytes == -2)
     {
-        printf("handle_backend_readable: Backend sent EOF");
+        DEBUG_PRINT("handle_backend_readable: Backend sent EOF");
         conn->state = CONN_BACKEND_EOF;
         epoll_server_delete(epoll_fd, conn->backend_fd);
     }
     else if (bytes == 0)
     {
-        printf("DEBUG: No data available (EAGAIN) - why so many?\n");
+        DEBUG_PRINT("DEBUG: No data available (EAGAIN) - why so many?\n");
         return HANDLER_OK;
     }
     else if (bytes > 0)
     {
-        printf("DEBUG: Read %zd bytes from backend\n", bytes);
+        DEBUG_PRINT("DEBUG: Read %zd bytes from backend\n", bytes);
     }
     /**Always check for data to send, even after EOF */
     if (buffer_available_data(&conn->response_buffer) > 0)
@@ -256,7 +257,7 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
         }
         else if (sent == -2)
         {
-            printf("handle_backend_readable: Client closed connection");
+            DEBUG_PRINT("handle_backend_readable: Client closed connection");
             return HANDLER_CLOSED;
         }
         else if (sent >= 0)
@@ -265,7 +266,7 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
             {
                 if (conn->state == CONN_BACKEND_EOF)
                 {
-                    printf("handle_backend_readable: Backend EOF and all data sent - closing");
+                    DEBUG_PRINT("handle_backend_readable: Backend EOF and all data sent - closing");
                     epoll_server_delete(epoll_fd, conn->backend_fd);
                     return HANDLER_CLOSED;
                 }
@@ -295,7 +296,7 @@ handler_status_t handle_backend_readable(connection_t *conn, int epoll_fd)
     {
         if (conn->state == CONN_BACKEND_EOF)
         {
-            printf("Backend EOF with no data - closing connection");
+            DEBUG_PRINT("Backend EOF with no data - closing connection");
             epoll_server_delete(epoll_fd, conn->backend_fd);
             return HANDLER_CLOSED;
         }
@@ -325,7 +326,7 @@ handler_status_t handle_client_writable(connection_t *conn, int epoll_fd)
     }
     else if (sent == -2)
     {
-        printf("handle_client_writable: Client closed connection during write");
+        DEBUG_PRINT("handle_client_writable: Client closed connection during write");
         return HANDLER_CLOSED;
     }
     else if (sent >= 0)
@@ -334,7 +335,7 @@ handler_status_t handle_client_writable(connection_t *conn, int epoll_fd)
         {
             if (conn->state == CONN_BACKEND_EOF)
             {
-                printf("handle_client_writable: Backend closed and all data sent - closing connection");
+                DEBUG_PRINT("handle_client_writable: Backend closed and all data sent - closing connection");
                 epoll_server_delete(epoll_fd, conn->backend_fd);
                 return HANDLER_CLOSED;
             }
@@ -368,7 +369,7 @@ handler_status_t handle_client_writable(connection_t *conn, int epoll_fd)
         }
         else
         {
-            printf("handle_client_writable: Still have %zu bytes to send", buffer_available_data(&conn->response_buffer));
+            DEBUG_PRINT("handle_client_writable: Still have %zu bytes to send", buffer_available_data(&conn->response_buffer));
             // Keep waiting for next EPOLLOUT - state remains CONN_SENDING_RESPONSE
         }
     }

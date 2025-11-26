@@ -6,6 +6,7 @@
 #include <errno.h>
 #include "common/server.h"
 #include "common/error_handler.h"
+#include "common/debug.h"
 
 int setup_server(int port)
 {
@@ -119,7 +120,7 @@ int accept_client(int server_id)
     }
     else
     {
-        printf("Connection from %s:%d\n",
+        DEBUG_PRINT("Connection from %s:%d\n",
                inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
     }
     return client_id;

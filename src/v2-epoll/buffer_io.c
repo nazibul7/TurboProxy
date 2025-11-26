@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <v2-epoll/buffer_io.h>
 #include <common/error_handler.h>
+#include <common/debug.h>
 
 /**
  * Here I have used while loop to read all data at once In LT mode because,
@@ -76,7 +77,7 @@ ssize_t buffer_read_from_fd(buffer_t *buf, int fd)
          */
         if (bytes_read == 0)
         {
-            printf("buffer_read_from_fd: Client fd %d sent EOF\n", fd);
+            DEBUG_PRINT("buffer_read_from_fd: Client fd %d sent EOF\n", fd);
             return total_bytes_read > 0 ? total_bytes_read : -2;
         }
 

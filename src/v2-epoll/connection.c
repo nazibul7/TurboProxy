@@ -9,6 +9,7 @@
 #include <v2-epoll/buffer.h>
 #include <v2-epoll/epoll_server.h>
 #include <common/request_parser.h>
+#include <common/debug.h>
 
 connection_t *connection_create(int client_fd)
 {
@@ -95,7 +96,7 @@ void connection_free(connection_t *conn, int epoll_fd)
         return;
 
     // Add this debug logging
-    printf("DEBUG: Freeing connection %p (client_fd=%d, backend_fd=%d)\n",
+    DEBUG_PRINT("DEBUG: Freeing connection %p (client_fd=%d, backend_fd=%d)\n",
            (void *)conn, conn->client_fd, conn->backend_fd);
 
     if (conn->request_parsed)
@@ -122,7 +123,7 @@ void connection_free(connection_t *conn, int epoll_fd)
     buffer_cleanup(&conn->request_buffer);
     buffer_cleanup(&conn->response_buffer);
 
-    printf("DEBUG: About to free connection %p\n", (void *)conn);
+    DEBUG_PRINT("DEBUG: About to free connection %p\n", (void *)conn);
     free(conn);
-    printf("DEBUG: Freed connection %p\n", (void *)conn);
+    DEBUG_PRINT("DEBUG: Freed connection %p\n", (void *)conn);
 }
