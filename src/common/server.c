@@ -116,7 +116,7 @@ int accept_client(int server_id)
             return -1; //"No connection available" - not an error
         }
         log_errno("accept failed");
-        return -1;
+        return -2; //other erros
     }
     else
     {
