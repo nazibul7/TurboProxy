@@ -163,62 +163,79 @@ int main()
             if (conn)
             {
                 DEBUG_PRINT("  client_fd=%d, backend_fd=%d, state=%d\n",
-                       conn->client_fd, conn->backend_fd, conn->state);
+                            conn->client_fd, conn->backend_fd, conn->state);
             }
 
             if (conn->state == CONN_LISTENING)
             {
                 /**
-                 * accept() never returns EINPROGRESS, because accepting a connection is different:
-                 * - either a connection is ready to accept, or it isn’t.
-                 * - There’s no “in-progress” state like a TCP handshake.
+                 * Loop accept for multiple pending connections
+                 * WHY: When server is under load, multiple clients may connect
+                 * between epoll_wait calls. The listen backlog can hold multiple
+                 * pending connections. Accepting in a loop handles bursts better.
+                 *
+                 * In non-blocking mode:
+                 * - accept() returns -1 with errno=EAGAIN when no more connections
+                 * - This is EXPECTED, not an error
+                 *
+                 * NOTE: In level-triggered mode (current), this isn't strictly needed
+                 * since we'll get EPOLLIN again if connections remain. But it's still
+                 * better for handling bursts efficiently.
                  */
-                // accepts the new connections which came to connects
-                client_fd = accept_client(listener.client_fd);
-                if (client_fd == -1)
+                while (1)
                 {
-                    continue; // No connection - move to next epoll event
-                }
-                if (client_fd < 0)
-                {
-                    log_error("Failed to accept the client fd");
+                    /**
+                     * accept() never returns EINPROGRESS, because accepting a connection is different:
+                     * - either a connection is ready to accept, or it isn’t.
+                     * - There’s no “in-progress” state like a TCP handshake.
+                     */
+                    // accepts the new connections which came to connects
+                    client_fd = accept_client(listener.client_fd);
+                    if (client_fd == -1)
+                    {
+                        break; // No connection - move to next epoll event
+                    }
+                    if (client_fd == -2)
+                    {
+                        log_error("Failed to accept the client fd");
+                        continue;
+                    }
+
+                    // make client_ids non-blocking
+                    if (set_non_blocking(client_fd))
+                    {
+                        log_error("main: failed to set client fd non-blocking");
+                        close(client_fd);
+                        continue;
+                    }
+
+                    connection_t *new_conn = connection_create(client_fd);
+                    if (!new_conn)
+                    {
+                        close(client_fd);
+                        log_error("connection_create failed for fd=%d", client_fd);
+                        continue;
+                    }
+
+                    /**
+                     * Here for Event flag for epoll that tells you:
+                     * "This file descriptor (socket) has data
+                     * you can read *without blocking*."
+                     */
+                    event.events = EPOLLIN;
+                    event.data.ptr = new_conn;
+
+                    if (epoll_server_add(epoll_fd, client_fd, &event) < 0)
+                    {
+                        log_error("Failed to add client fd in epoll watchlist");
+                        connection_free(new_conn, epoll_fd);
+                        continue;
+                    }
+
+                    DEBUG_PRINT("✅ New client connection created: fd=%d, state=%d\n",
+                                new_conn->client_fd, new_conn->state);
                     continue;
                 }
-
-                // make client_ids non-blocking
-                if (set_non_blocking(client_fd))
-                {
-                    log_error("main: failed to set client fd non-blocking");
-                    close(client_fd);
-                    continue;
-                }
-
-                connection_t *new_conn = connection_create(client_fd);
-                if (!new_conn)
-                {
-                    close(client_fd);
-                    log_error("connection_create failed for fd=%d", client_fd);
-                    continue;
-                }
-
-                /**
-                 * Here for Event flag for epoll that tells you:
-                 * "This file descriptor (socket) has data
-                 * you can read *without blocking*."
-                 */
-                event.events = EPOLLIN;
-                event.data.ptr = new_conn;
-
-                if (epoll_server_add(epoll_fd, client_fd, &event) < 0)
-                {
-                    log_error("Failed to add client fd in epoll watchlist");
-                    connection_free(new_conn, epoll_fd);
-                    continue;
-                }
-
-                DEBUG_PRINT("✅ New client connection created: fd=%d, state=%d\n",
-                       new_conn->client_fd, new_conn->state);
-                continue;
             }
             else
             {
